@@ -102,6 +102,7 @@ jobs:
             if [ -d "$HOME/Review-bot" ]; then
               echo "📂 Repository exists. Pulling latest changes..."
               cd $HOME/Review-bot
+              git clean -fd
               git pull origin main || { echo "❌ Git pull failed!"; exit 1; }
               echo "✅ Repository updated"
             else
@@ -126,6 +127,13 @@ jobs:
             echo "TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}" >> .env
             echo "DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}" >> .env
             echo "TODO_NOTIFICATION_CHANNEL_ID=${{ secrets.TODO_NOTIFICATION_CHANNEL_ID || '1468959638052540439' }}" >> .env
+            echo "CLASSROOM_ENABLED=${{ secrets.CLASSROOM_ENABLED || 'false' }}" >> .env
+            echo "CLASSROOM_SYNC_TIME=${{ secrets.CLASSROOM_SYNC_TIME || '0 7 * * *' }}" >> .env
+            echo "CLASSROOM_DUE_WITHIN_DAYS=${{ secrets.CLASSROOM_DUE_WITHIN_DAYS || '7' }}" >> .env
+            echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
+            echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
+            echo "GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" >> .env
+            echo "GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI || 'https://developers.google.com/oauthplayground' }}" >> .env
             echo "✅ .env file created"
             
             # PM2 setup
