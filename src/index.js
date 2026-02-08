@@ -1,8 +1,10 @@
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const reviewCommand = require('./commands/review');
 const todayCommand = require('./commands/today');
+const doneCommand = require('./commands/done');
 const TodoScheduler = require('./scheduler');
+const todoistService = require('./services/todoist');
 
 // Discord クライアントの初期化
 const client = new Client({
@@ -17,9 +19,10 @@ const client = new Client({
 client.commands = new Collection();
 client.commands.set('review', reviewCommand);
 client.commands.set('today', todayCommand);
+client.commands.set('done', doneCommand);
 
 // スラッシュコマンドの登録
-const commands = [todayCommand.data.toJSON()];
+const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON()];
 
 const rest = new REST({ version: '10' }).setToken(config.discord.token);
 
@@ -46,24 +49,78 @@ client.once('ready', async () => {
 
 // スラッシュコマンドの処理
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
 
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(`スラッシュコマンド実行エラー: ${error}`);
+      const reply = { content: '❌ コマンドの実行中にエラーが発生しました。', ephemeral: true };
+      
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(reply);
+      } else {
+        await interaction.reply(reply);
+      }
+    }
+  }
 
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(`スラッシュコマンド実行エラー: ${error}`);
-    const reply = { content: '❌ コマンドの実行中にエラーが発生しました。', ephemeral: true };
-    
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(reply);
-    } else {
-      await interaction.reply(reply);
+  // スレクトメニュー処理
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'task-done-select') {
+      await handleTaskCompletion(interaction);
     }
   }
 });
+
+/**
+ * タスク完了処理
+ * @param {Interaction} interaction
+ */
+async function handleTaskCompletion(interaction) {
+  await interaction.deferReply();
+
+  try {
+    const selectedTaskIds = interaction.values;
+    const completedTasks = [];
+    const failedTasks = [];
+
+    for (const taskId of selectedTaskIds) {
+      try {
+        await todoistService.completeTask(taskId);
+        completedTasks.push(taskId);
+      } catch (error) {
+        console.error(`タスク完了エラー (${taskId}):`, error);
+        failedTasks.push(taskId);
+      }
+    }
+
+    // 完了結果のメッセージを作成
+    let resultMessage = '';
+    if (completedTasks.length > 0) {
+      resultMessage += `✅ **${completedTasks.length}件完了しました！**\n`;
+    }
+    if (failedTasks.length > 0) {
+      resultMessage += `❌ **${failedTasks.length}件失敗しました**\n`;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(failedTasks.length === 0 ? '#4CAF50' : '#FF9800')
+      .setTitle('🎉 タスク完了結果')
+      .setDescription(resultMessage)
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed], components: [] });
+
+    console.log(`✅ タスク完了: ${completedTasks.length}件完了, ${failedTasks.length}件失敗`);
+
+  } catch (error) {
+    console.error('タスク完了エラー:', error);
+    await interaction.editReply('❌ タスクの完了に失敗しました。');
+  }
+}
 
 // メッセージを受信したときの処理
 client.on('messageCreate', async (message) => {
