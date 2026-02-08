@@ -19,7 +19,7 @@ module.exports = {
     try {
       const selectedTaskId = interaction.options.getString('task');
       const todayTasks = await todoistService.getTodayTasks();
-      const overdueTasks = await todoistService.getOverdueTasks();
+      const overdueTasks = filterRecentOverdue(await todoistService.getOverdueTasks());
       
       const allTasks = [...overdueTasks, ...todayTasks];
 
@@ -45,7 +45,7 @@ module.exports = {
   async autocomplete(interaction) {
     try {
       const todayTasks = await todoistService.getTodayTasks();
-      const overdueTasks = await todoistService.getOverdueTasks();
+      const overdueTasks = filterRecentOverdue(await todoistService.getOverdueTasks());
       const allTasks = [...overdueTasks, ...todayTasks];
 
       // Autocomplete は最大25件まで
@@ -83,6 +83,17 @@ async function handleDirectCompletion(interaction, taskId) {
     console.error('タスク完了エラー:', error);
     await interaction.editReply('❌ タスクの完了に失敗しました。');
   }
+}
+
+function filterRecentOverdue(tasks) {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  return tasks.filter(task => {
+    if (!task.due || !task.due.date) return false;
+    return task.due.date >= yesterdayStr;
+  });
 }
 
 /**
