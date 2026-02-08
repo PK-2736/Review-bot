@@ -4,12 +4,20 @@ const todoistService = require('../services/todoist');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('done')
-    .setDescription('タスクを完了にします'),
+    .setDescription('タスクを完了にします')
+    .addStringOption(option =>
+      option
+        .setName('task')
+        .setDescription('完了するタスクを選択')
+        .setRequired(false)
+        .setAutocomplete(true)
+    ),
   
   async execute(interaction) {
     await interaction.deferReply();
 
     try {
+      const selectedTaskId = interaction.options.getString('task');
       const todayTasks = await todoistService.getTodayTasks();
       const overdueTasks = await todoistService.getOverdueTasks();
       
@@ -20,15 +28,62 @@ module.exports = {
         return;
       }
 
-      // 初期セレクトを表示
-      await showPrimarySelect(interaction, allTasks, overdueTasks, todayTasks);
+      // オプションでタスクが選択されている場合は即座に完了
+      if (selectedTaskId) {
+        await handleDirectCompletion(interaction, selectedTaskId);
+      } else {
+        // オプションが空の場合はメッセージセレクトを表示
+        await showPrimarySelect(interaction, allTasks, overdueTasks, todayTasks);
+      }
 
     } catch (error) {
       console.error('タスク完了コマンドエラー:', error);
       await interaction.editReply('❌ エラーが発生しました。');
     }
   },
+
+  async autocomplete(interaction) {
+    try {
+      const todayTasks = await todoistService.getTodayTasks();
+      const overdueTasks = await todoistService.getOverdueTasks();
+      const allTasks = [...overdueTasks, ...todayTasks];
+
+      // Autocomplete は最大25件まで
+      const choices = allTasks.slice(0, 25).map(task => ({
+        name: `${task.content.substring(0, 90)}`,
+        value: task.id,
+      }));
+
+      await interaction.respond(choices);
+    } catch (error) {
+      console.error('Autocompleteエラー:', error);
+      await interaction.respond([]);
+    }
+  },
 };
+
+/**
+ * オプションで直接選択された場合の完了処理
+ */
+async function handleDirectCompletion(interaction, taskId) {
+  try {
+    await todoistService.completeTask(taskId);
+
+    const embed = new EmbedBuilder()
+      .setColor('#4CAF50')
+      .setTitle('✅ タスク完了')
+      .setDescription('タスクを完了しました！')
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+
+    console.log(`✅ タスク完了 (直接選択): ${taskId}`);
+
+  } catch (error) {
+    console.error('タスク完了エラー:', error);
+    await interaction.editReply('❌ タスクの完了に失敗しました。');
+  }
+}
 
 /**
  * 第一段階のセレクトメニュー（slash command response）
