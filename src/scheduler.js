@@ -107,20 +107,23 @@ class TodoScheduler {
     try {
       const taskContent = `${schedule.subject}${schedule.instructor ? ` (${schedule.instructor})` : ''}${schedule.content ? ` - ${schedule.content}` : ''}`;
       
-      await todoistService.createReviewSeries(taskContent);
+      // スケジュールにモード設定があればそれを使用、なければ通常モード
+      const mode = schedule.reviewMode || 'normal';
+      await todoistService.createReviewSeries(taskContent, mode);
 
       const channel = await this.client.channels.fetch(config.notification.channelId);
       if (channel) {
         const now = new Date();
         const dateStr = now.toLocaleDateString('ja-JP');
+        const modeLabel = mode === 'mastery' ? '完全習得モード（8回・半年間）' : '通常モード（5回・1ヶ月）';
         
         await channel.send({
-          content: `📚 **自動タスク作成**\n\n${schedule.subject} の復習スケジュールを作成しました！\n\n⏰ ${dateStr} ${schedule.time} 実行`,
+          content: `📚 **自動タスク作成**\n\n${schedule.subject} の復習スケジュールを作成しました！\n📊 ${modeLabel}\n⏰ ${dateStr} 実行`,
           embeds: []
         });
       }
 
-      console.log(`✅ 自動タスク作成: ${schedule.subject} (スケジュールID: ${schedule.id})`);
+      console.log(`✅ 自動タスク作成: ${schedule.subject} (${mode}モード, スケジュールID: ${schedule.id})`);
     } catch (error) {
       console.error(`自動タスク作成失敗 (${schedule.subject}):`, error);
     }

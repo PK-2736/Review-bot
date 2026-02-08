@@ -62,6 +62,16 @@ module.exports = {
             .setMinValue(0)
             .setMaxValue(1440)
         )
+        .addStringOption(option =>
+          option
+            .setName('review_mode')
+            .setDescription('復習モード（デフォルト：通常）')
+            .setRequired(false)
+            .addChoices(
+              { name: '通常モード（5回・1ヶ月）', value: 'normal' },
+              { name: '完全習得モード（8回・半年間）', value: 'mastery' }
+            )
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
@@ -107,6 +117,7 @@ async function handleAdd(interaction) {
     const content = interaction.options.getString('content') || '';
     const instructor = interaction.options.getString('instructor') || '';
     const reviewOffset = interaction.options.getInteger('review_offset') || 180; // デフォルト3時間後
+    const reviewMode = interaction.options.getString('review_mode') || 'normal';
 
     // 時間フォーマットの検証
     if (!/^\d{2}:\d{2}$/.test(time)) {
@@ -121,13 +132,15 @@ async function handleAdd(interaction) {
       content,
       instructor,
       reviewOffset,
+      reviewMode,
     });
 
     // 復習作成時間を計算して表示
     const reviewTime = calculateReviewTime(time, reviewOffset);
+    const modeLabel = reviewMode === 'mastery' ? '完全習得モード（8回・半年間）' : '通常モード（5回・1ヶ月）';
 
     const embed = new EmbedBuilder()
-      .setColor('#4CAF50')
+      .setColor(reviewMode === 'mastery' ? '#9C27B0' : '#4CAF50')
       .setTitle('✅ 授業スケジュール追加完了')
       .addFields(
         { name: 'ID', value: `${schedule.id}`, inline: true },
@@ -146,13 +159,13 @@ async function handleAdd(interaction) {
 
     embed.addFields({
       name: '📝 自動実行',
-      value: `毎週${day}曜日 **${reviewTime}** に復習TODOが自動作成されます\n（授業時間の${Math.floor(reviewOffset/60)}時間${reviewOffset%60}分後）`,
+      value: `毎週${day}曜日 **${reviewTime}** に復習TODOが自動作成されます\n📊 ${modeLabel}\n⏰ 授業時間の${Math.floor(reviewOffset/60)}時間${reviewOffset%60}分後`,
       inline: false,
     });
 
     await interaction.editReply({ embeds: [embed] });
 
-    console.log(`✅ 授業スケジュール追加: ${subject} (毎週${day}曜日 授業:${time} → 復習作成:${reviewTime})`);
+    console.log(`✅ 授業スケジュール追加: ${subject} (毎週${day}曜日 授業:${time} → 復習作成:${reviewTime}, ${reviewMode}モード)`);
 
   } catch (error) {
     console.error('スケジュール追加エラー:', error);
