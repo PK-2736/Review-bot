@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, PermissionFlagsBits } = require('discord.js');
 const classroomService = require('../services/classroomService');
 const ClassroomTaskStore = require('../services/classroomTaskStore');
 const config = require('../config');
@@ -242,7 +242,7 @@ async function handleList(interaction) {
 async function handleSync(interaction) {
   try {
     // 権限チェック（管理者のみ）
-    if (!interaction.member.permissions.has('ADMINISTRATOR')) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return await interaction.reply({
         content: '❌ このコマンドは管理者のみが実行できます。',
         ephemeral: true
