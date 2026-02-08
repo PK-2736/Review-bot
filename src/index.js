@@ -92,11 +92,8 @@ client.on('interactionCreate', async (interaction) => {
 
   // スレクトメニュー処理
   if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'task-done-select' || 
-        interaction.customId === 'done-select-primary' || 
-        interaction.customId === 'done-select-fallback') {
+    if (interaction.customId === 'done-select-primary') {
       // done.js が直接処理するため、ここでは何もしない
-      // /done コマンドで既に handled
     }
   }
 });

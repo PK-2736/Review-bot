@@ -86,7 +86,7 @@ async function handleDirectCompletion(interaction, taskId) {
 }
 
 /**
- * 第一段階のセレクトメニュー（slash command response）
+ * メッセージセレクトメニューを表示
  */
 async function showPrimarySelect(interaction, allTasks, overdueTasks, todayTasks) {
   const options = createSelectOptions(allTasks);
@@ -111,7 +111,6 @@ async function showPrimarySelect(interaction, allTasks, overdueTasks, todayTasks
         inline: true
       }
     )
-    .setFooter({ text: '30秒以内に選択してください' })
     .setTimestamp();
 
   await interaction.editReply({ 
@@ -119,77 +118,28 @@ async function showPrimarySelect(interaction, allTasks, overdueTasks, todayTasks
     components: [row] 
   });
 
-  // 30秒の選択を待つ
+  // セレクトの選択を待つ
   const filter = i => i.customId === 'done-select-primary' && i.user.id === interaction.user.id;
   
   try {
     const collected = await interaction.channel.awaitMessageComponent({ 
       filter, 
-      time: 30000 
+      time: 300000 // 5分
     });
 
-    // ここで選択確定 - タスク完了処理
+    // 選択確定 - タスク完了処理
     await handleSelectionAndComplete(collected, allTasks);
 
   } catch (error) {
     if (error.code === 'InteractionCollectorError') {
-      // タイムアウト - フォールバックセレクトを表示
-      await showFallbackSelect(interaction, allTasks);
-    } else {
-      throw error;
-    }
-  }
-}
-
-/**
- * 第二段階のセレクトメニュー（フォールバック用メッセージ）
- */
-async function showFallbackSelect(interaction, allTasks) {
-  const options = createSelectOptions(allTasks);
-
-  const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId('done-select-fallback')
-    .setPlaceholder('完了するタスクを選択...')
-    .addOptions(options)
-    .setMaxValues(Math.min(5, allTasks.length))
-    .setMinValues(1);
-
-  const row = new ActionRowBuilder().addComponents(selectMenu);
-
-  const embed = new EmbedBuilder()
-    .setColor('#FF9800')
-    .setTitle('⏱️ セレクト再表示')
-    .setDescription(`完了するタスクを選択してください（最大${Math.min(5, allTasks.length)}件まで同時選択可能）`)
-    .setFooter({ text: '60秒以内に選択してください' })
-    .setTimestamp();
-
-  const message = await interaction.channel.send({ 
-    embeds: [embed],
-    components: [row] 
-  });
-
-  // 60秒の選択を待つ
-  const filter = i => i.customId === 'done-select-fallback' && i.user.id === interaction.user.id;
-  
-  try {
-    const collected = await message.awaitMessageComponent({ 
-      filter, 
-      time: 60000 
-    });
-
-    // ここで選択確定 - タスク完了処理
-    await handleSelectionAndComplete(collected, allTasks);
-
-  } catch (error) {
-    if (error.code === 'InteractionCollectorError') {
-      // 再度タイムアウト
+      // タイムアウト
       const timeoutEmbed = new EmbedBuilder()
         .setColor('#F44336')
         .setTitle('⏱️ タイムアウト')
         .setDescription('タスク選択がタイムアウトしました')
         .setTimestamp();
 
-      await message.edit({ embeds: [timeoutEmbed], components: [] });
+      await interaction.editReply({ embeds: [timeoutEmbed], components: [] });
     } else {
       throw error;
     }
