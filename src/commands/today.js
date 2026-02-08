@@ -85,26 +85,41 @@ function createTaskSummary(tasks) {
   const normalPriority = tasks.filter(t => t.priority <= 2);
 
   let summary = '';
+  const MAX_ITEMS_PER_PRIORITY = 8;
 
   if (highPriority.length > 0) {
-    const taskList = highPriority.map((task, index) => 
-      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    const displayItems = highPriority.slice(0, MAX_ITEMS_PER_PRIORITY);
+    const taskList = displayItems.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content.substring(0, 60)}`
     ).join('\n');
-    summary += `🔴 **高優先度** (${highPriority.length})\n${taskList}\n\n`;
+    summary += `🔴 **高優先度** (${highPriority.length})\n${taskList}`;
+    if (highPriority.length > MAX_ITEMS_PER_PRIORITY) {
+      summary += `\n  他 ${highPriority.length - MAX_ITEMS_PER_PRIORITY}件`;
+    }
+    summary += '\n\n';
   }
 
   if (mediumPriority.length > 0) {
-    const taskList = mediumPriority.map((task, index) => 
-      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    const displayItems = mediumPriority.slice(0, MAX_ITEMS_PER_PRIORITY);
+    const taskList = displayItems.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content.substring(0, 60)}`
     ).join('\n');
-    summary += `🟡 **中優先度** (${mediumPriority.length})\n${taskList}\n\n`;
+    summary += `🟡 **中優先度** (${mediumPriority.length})\n${taskList}`;
+    if (mediumPriority.length > MAX_ITEMS_PER_PRIORITY) {
+      summary += `\n  他 ${mediumPriority.length - MAX_ITEMS_PER_PRIORITY}件`;
+    }
+    summary += '\n\n';
   }
 
   if (normalPriority.length > 0) {
-    const taskList = normalPriority.map((task, index) => 
-      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    const displayItems = normalPriority.slice(0, MAX_ITEMS_PER_PRIORITY);
+    const taskList = displayItems.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content.substring(0, 60)}`
     ).join('\n');
     summary += `⚪ **通常** (${normalPriority.length})\n${taskList}`;
+    if (normalPriority.length > MAX_ITEMS_PER_PRIORITY) {
+      summary += `\n  他 ${normalPriority.length - MAX_ITEMS_PER_PRIORITY}件`;
+    }
   }
 
   return summary.trim();
