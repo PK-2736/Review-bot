@@ -96,17 +96,39 @@ class TodoistService {
       const tasks = await this.api.getTasks();
       const today = new Date().toISOString().split('T')[0];
       
-      // 今日が期限、または期限切れのタスクをフィルタ
+      // 今日が期限のタスクのみ
       const todayTasks = tasks.filter(task => {
         if (!task.due) return false;
-        const dueDate = task.due.date;
-        return dueDate <= today;
+        return task.due.date === today;
       });
 
       // 優先度でソート（高優先度が先）
       return todayTasks.sort((a, b) => b.priority - a.priority);
     } catch (error) {
       console.error('今日のタスク取得エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 昨日以前の期限切れタスクを取得
+   * @returns {Promise<Array>} 期限切れタスクリスト
+   */
+  async getOverdueTasks() {
+    try {
+      const tasks = await this.api.getTasks();
+      const today = new Date().toISOString().split('T')[0];
+      
+      // 昨日以前が期限のタスク
+      const overdueTasks = tasks.filter(task => {
+        if (!task.due) return false;
+        return task.due.date < today;
+      });
+
+      // 優先度でソート（高優先度が先）
+      return overdueTasks.sort((a, b) => b.priority - a.priority);
+    } catch (error) {
+      console.error('期限切れタスク取得エラー:', error);
       throw error;
     }
   }

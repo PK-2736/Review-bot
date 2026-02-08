@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const config = require('./config');
 const todoistService = require('./services/todoist');
-const { createTodoEmbed } = require('./commands/today');
+const { createTodoEmbed, createTaskSummary } = require('./commands/today');
 
 class TodoScheduler {
   constructor(client) {
@@ -43,20 +43,22 @@ class TodoScheduler {
         return;
       }
 
-      const tasks = await todoistService.getTodayTasks();
+      const todayTasks = await todoistService.getTodayTasks();
+      const overdueTasks = await todoistService.getOverdueTasks();
       
-      if (tasks.length === 0) {
-        await channel.send(`🎉 **${label}の確認**\n今日のタスクはありません！お疲れ様でした！`);
+      if (todayTasks.length === 0 && overdueTasks.length === 0) {
+        await channel.send(`🎉 **${label}の確認**\nタスクはありません！お疲れ様でした！`);
         return;
       }
 
-      const embed = createTodoEmbed(tasks);
+      const embed = createTodoEmbed(todayTasks, overdueTasks);
       await channel.send({ 
         content: `📢 **${label}の時間です！** 今日のTODOを確認しましょう！`, 
         embeds: [embed] 
       });
 
-      console.log(`✅ ${label}のTODO通知を送信しました (${tasks.length}件)`);
+      const totalTasks = todayTasks.length + overdueTasks.length;
+      console.log(`✅ ${label}のTODO通知を送信しました (積み残し: ${overdueTasks.length}件, 今日: ${todayTasks.length}件, 合計: ${totalTasks}件)`);
     } catch (error) {
       console.error(`❌ ${label}のTODO通知送信エラー:`, error);
     }

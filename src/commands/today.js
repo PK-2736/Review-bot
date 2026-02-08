@@ -10,14 +10,15 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const tasks = await todoistService.getTodayTasks();
+      const todayTasks = await todoistService.getTodayTasks();
+      const overdueTasks = await todoistService.getOverdueTasks();
       
-      if (tasks.length === 0) {
-        await interaction.editReply('🎉 今日のタスクはありません！お疲れ様でした！');
+      if (todayTasks.length === 0 && overdueTasks.length === 0) {
+        await interaction.editReply('🎉 タスクはありません！お疲れ様でした！');
         return;
       }
 
-      const embed = createTodoEmbed(tasks);
+      const embed = createTodoEmbed(todayTasks, overdueTasks);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error('今日のタスク取得エラー:', error);
@@ -28,10 +29,11 @@ module.exports = {
 
 /**
  * TODOリストの埋め込みメッセージを作成
- * @param {Array} tasks - タスクリスト
+ * @param {Array} todayTasks - 今日のタスク
+ * @param {Array} overdueTasks - 期限切れタスク
  * @returns {EmbedBuilder}
  */
-function createTodoEmbed(tasks) {
+function createTodoEmbed(todayTasks, overdueTasks) {
   const now = new Date();
   const today = now.toLocaleDateString('ja-JP', { 
     year: 'numeric', 
@@ -40,46 +42,29 @@ function createTodoEmbed(tasks) {
     weekday: 'long'
   });
 
+  const totalTasks = todayTasks.length + overdueTasks.length;
   const embed = new EmbedBuilder()
     .setColor('#E44332')
     .setTitle('📋 今日のTODOリスト')
-    .setDescription(`${today}\n\n全 ${tasks.length} 件のタスク`)
+    .setDescription(`${today}\n\n全 ${totalTasks} 件のタスク`)
     .setTimestamp();
 
-  // 優先度別にグループ化
-  const highPriority = tasks.filter(t => t.priority === 4);
-  const mediumPriority = tasks.filter(t => t.priority === 3);
-  const normalPriority = tasks.filter(t => t.priority <= 2);
-
-  if (highPriority.length > 0) {
-    const taskList = highPriority.map((task, index) => 
-      `${index + 1}. ${getTaskIcon(task)} ${task.content}`
-    ).join('\n');
+  // 期限切れタスクを表示
+  if (overdueTasks.length > 0) {
+    const overdueSummary = createTaskSummary(overdueTasks);
     embed.addFields({ 
-      name: '🔴 高優先度', 
-      value: taskList, 
+      name: `⏰ 【積み残し】 ${overdueTasks.length} 件`, 
+      value: overdueSummary, 
       inline: false 
     });
   }
 
-  if (mediumPriority.length > 0) {
-    const taskList = mediumPriority.map((task, index) => 
-      `${index + 1}. ${getTaskIcon(task)} ${task.content}`
-    ).join('\n');
+  // 今日のタスクを表示
+  if (todayTasks.length > 0) {
+    const todaySummary = createTaskSummary(todayTasks);
     embed.addFields({ 
-      name: '🟡 中優先度', 
-      value: taskList, 
-      inline: false 
-    });
-  }
-
-  if (normalPriority.length > 0) {
-    const taskList = normalPriority.map((task, index) => 
-      `${index + 1}. ${getTaskIcon(task)} ${task.content}`
-    ).join('\n');
-    embed.addFields({ 
-      name: '⚪ 通常', 
-      value: taskList, 
+      name: `📅 【今日】 ${todayTasks.length} 件`, 
+      value: todaySummary, 
       inline: false 
     });
   }
@@ -87,6 +72,42 @@ function createTodoEmbed(tasks) {
   embed.setFooter({ text: '💡 Todoistで管理されています' });
 
   return embed;
+}
+
+/**
+ * タスク一覧を優先度別にまとめる
+ * @param {Array} tasks - タスク
+ * @returns {string}
+ */
+function createTaskSummary(tasks) {
+  const highPriority = tasks.filter(t => t.priority === 4);
+  const mediumPriority = tasks.filter(t => t.priority === 3);
+  const normalPriority = tasks.filter(t => t.priority <= 2);
+
+  let summary = '';
+
+  if (highPriority.length > 0) {
+    const taskList = highPriority.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    ).join('\n');
+    summary += `🔴 **高優先度** (${highPriority.length})\n${taskList}\n\n`;
+  }
+
+  if (mediumPriority.length > 0) {
+    const taskList = mediumPriority.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    ).join('\n');
+    summary += `🟡 **中優先度** (${mediumPriority.length})\n${taskList}\n\n`;
+  }
+
+  if (normalPriority.length > 0) {
+    const taskList = normalPriority.map((task, index) => 
+      `  ${index + 1}. ${getTaskIcon(task)} ${task.content}`
+    ).join('\n');
+    summary += `⚪ **通常** (${normalPriority.length})\n${taskList}`;
+  }
+
+  return summary.trim();
 }
 
 /**
@@ -102,3 +123,4 @@ function getTaskIcon(task) {
 }
 
 module.exports.createTodoEmbed = createTodoEmbed;
+module.exports.createTaskSummary = createTaskSummary;
