@@ -14,6 +14,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ ERROR: SSH_PRIVATE_KEY is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "❌ ERROR: SSH_HOST is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "❌ ERROR: SSH_USER is not set"
+            exit 1
+          fi
+          echo "✅ All required secrets are present"
+
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -22,53 +38,88 @@ jobs:
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          echo "📝 Adding host: ${{ secrets.SSH_HOST }}"
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>&1
+          echo "✅ Host added successfully"
 
       - name: Deploy to server
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
-          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
-          DEFAULT_PROJECT_NAME: ${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
         run: |
-          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
-            set -e
+          echo "🚀 Starting deployment..."
+          echo "📍 Target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+          
+          ssh -vvv -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+            set -x
             
-            echo "📦 Deploying Review-bot..."
+            echo "========================================="
+            echo "📦 Review-bot Deployment Started"
+            echo "========================================="
             
-            # Node.js がインストールされているか確認
+            # System information
+            echo ""
+            echo "📊 System Information:"
+            uname -a
+            pwd
+            whoami
+            echo ""
+            
+            # Node.js check
+            echo "🔍 Checking Node.js..."
             if ! command -v node &> /dev/null; then
-              echo "📥 Installing Node.js..."
+              echo "❌ Node.js not found. Installing..."
+              sudo apt-get update
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-              sudo apt install -y nodejs
+              sudo apt-get install -y nodejs
+              echo "✅ Node.js installed: $(node --version)"
+            else
+              echo "✅ Node.js found: $(node --version)"
             fi
             
-            # Git がインストールされているか確認
+            # npm check
+            echo ""
+            echo "🔍 Checking npm..."
+            if ! command -v npm &> /dev/null; then
+              echo "❌ npm not found!"
+              exit 1
+            else
+              echo "✅ npm found: $(npm --version)"
+            fi
+            
+            # Git check
+            echo ""
+            echo "🔍 Checking Git..."
             if ! command -v git &> /dev/null; then
-              echo "📦 Installing Git..."
-              sudo apt install -y git
+              echo "❌ Git not found. Installing..."
+              sudo apt-get update
+              sudo apt-get install -y git
+              echo "✅ Git installed"
+            else
+              echo "✅ Git found: $(git --version)"
             fi
             
-            # プロジェクトディレクトリに移動（なければクローン）
+            # Repository setup
+            echo ""
+            echo "📁 Setting up repository..."
             if [ -d "$HOME/Review-bot" ]; then
+              echo "📂 Repository exists. Pulling latest changes..."
               cd $HOME/Review-bot
-              echo "🔄 Pulling latest changes..."
-              git pull origin main
+              git pull origin main || { echo "❌ Git pull failed!"; exit 1; }
+              echo "✅ Repository updated"
             else
               echo "📥 Cloning repository..."
               cd $HOME
-              git clone https://github.com/${{ github.repository }}.git
+              git clone https://github.com/${{ github.repository }}.git Review-bot || { echo "❌ Git clone failed!"; exit 1; }
               cd Review-bot
+              echo "✅ Repository cloned"
             fi
             
-            # 依存関係のインストール
+            # Dependencies
+            echo ""
             echo "📚 Installing dependencies..."
-            npm install --production
+            npm install --production || { echo "❌ npm install failed!"; exit 1; }
+            echo "✅ Dependencies installed"
             
-            # 環境変数ファイルの作成
+            # Environment setup
+            echo ""
             echo "🔐 Creating .env file..."
             cat > .env << 'EOF'
 DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
@@ -76,31 +127,60 @@ DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
 TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}
 DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
 EOF
+            echo "✅ .env file created"
             
-            # PM2がインストールされているか確認
+            # PM2 setup
+            echo ""
+            echo "🔍 Checking PM2..."
             if ! command -v pm2 &> /dev/null; then
-              echo "📦 Installing PM2..."
+              echo "❌ PM2 not found. Installing..."
               sudo npm install -g pm2
+              echo "✅ PM2 installed: $(pm2 --version)"
+            else
+              echo "✅ PM2 found: $(pm2 --version)"
             fi
             
-            # PM2でアプリケーションを起動/再起動
-            echo "🚀 Starting/Restarting application with PM2..."
-            pm2 restart ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
+            # Create logs directory
+            echo ""
+            echo "📁 Creating logs directory..."
+            mkdir -p $HOME/Review-bot/logs
+            echo "✅ Logs directory ready"
             
-            # PM2の自動起動設定を保存
-            pm2 save
+            # Start/Restart application
+            echo ""
+            echo "🚀 Starting application with PM2..."
+            pm2 delete review-bot 2>/dev/null || true
+            pm2 start ecosystem.config.js --env production || { echo "❌ PM2 start failed!"; exit 1; }
+            echo "✅ Application started"
             
-            echo "✅ Deployment completed successfully!"
-            echo "📊 Application status:"
+            # Save PM2 config
+            echo ""
+            echo "💾 Saving PM2 configuration..."
+            pm2 save || true
+            echo "✅ PM2 configuration saved"
+            
+            # Show status
+            echo ""
+            echo "📊 Application Status:"
             pm2 list
+            pm2 logs review-bot --lines 10
+            
+            echo ""
+            echo "========================================="
+            echo "✅ Deployment Completed Successfully!"
+            echo "========================================="
           ENDSSH
+        timeout-minutes: 30
 
       - name: Deployment notification
         if: always()
         run: |
-          if [ $? -eq 0 ]; then
-            echo "✅ Deployment successful!"
+          echo "========================================="
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Deployment Successful!"
+            echo "🚀 Bot is now running on the server"
           else
-            echo "❌ Deployment failed!"
-            exit 1
+            echo "❌ Deployment Failed!"
+            echo "📋 Check the logs above for error details"
           fi
+          echo "========================================="
