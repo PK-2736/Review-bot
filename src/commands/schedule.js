@@ -54,6 +54,14 @@ module.exports = {
             .setRequired(false)
             .setMaxLength(50)
         )
+        .addIntegerOption(option =>
+          option
+            .setName('review_offset')
+            .setDescription('授業終了後、何分後に復習TODOを作成するか（デフォルト：180分=3時間後）')
+            .setRequired(false)
+            .setMinValue(0)
+            .setMaxValue(1440)
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
@@ -98,6 +106,7 @@ async function handleAdd(interaction) {
     const subject = interaction.options.getString('subject');
     const content = interaction.options.getString('content') || '';
     const instructor = interaction.options.getString('instructor') || '';
+    const reviewOffset = interaction.options.getInteger('review_offset') || 180; // デフォルト3時間後
 
     // 時間フォーマットの検証
     if (!/^\d{2}:\d{2}$/.test(time)) {
@@ -111,7 +120,11 @@ async function handleAdd(interaction) {
       subject,
       content,
       instructor,
+      reviewOffset,
     });
+
+    // 復習作成時間を計算して表示
+    const reviewTime = calculateReviewTime(time, reviewOffset);
 
     const embed = new EmbedBuilder()
       .setColor('#4CAF50')
@@ -119,7 +132,7 @@ async function handleAdd(interaction) {
       .addFields(
         { name: 'ID', value: `${schedule.id}`, inline: true },
         { name: '曜日', value: `${day}曜日`, inline: true },
-        { name: '時間', value: time, inline: true },
+        { name: '授業時間', value: time, inline: true },
         { name: '科目', value: subject, inline: true },
       );
 
@@ -133,18 +146,34 @@ async function handleAdd(interaction) {
 
     embed.addFields({
       name: '📝 自動実行',
-      value: `毎週${day}曜日 ${time} に復習TODOが自動作成されます`,
+      value: `毎週${day}曜日 **${reviewTime}** に復習TODOが自動作成されます\n（授業時間の${Math.floor(reviewOffset/60)}時間${reviewOffset%60}分後）`,
       inline: false,
     });
 
     await interaction.editReply({ embeds: [embed] });
 
-    console.log(`✅ 授業スケジュール追加: ${subject} (毎週${day}曜日 ${time})`);
+    console.log(`✅ 授業スケジュール追加: ${subject} (毎週${day}曜日 授業:${time} → 復習作成:${reviewTime})`);
 
   } catch (error) {
     console.error('スケジュール追加エラー:', error);
     await interaction.editReply('❌ エラーが発生しました。');
   }
+}
+
+/**
+ * 復習タスク作成時間を計算
+ */
+function calculateReviewTime(classTime, offsetMinutes) {
+  const [hours, minutes] = classTime.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hours);
+  date.setMinutes(minutes);
+  date.setMinutes(date.getMinutes() + offsetMinutes);
+  
+  const reviewHours = String(date.getHours()).padStart(2, '0');
+  const reviewMinutes = String(date.getMinutes()).padStart(2, '0');
+  
+  return `${reviewHours}:${reviewMinutes}`;
 }
 
 /**
@@ -172,7 +201,8 @@ async function handleList(interaction) {
 
     let scheduleText = '';
     schedules.forEach(schedule => {
-      const line = `**ID: ${schedule.id}** | ${schedule.day}曜日 ${schedule.time} | ${schedule.subject}`;
+      const reviewTime = calculateReviewTime(schedule.time, schedule.reviewOffset || 180);
+      const line = `**ID: ${schedule.id}** | ${schedule.day}曜日 授業:${schedule.time} → 復習:${reviewTime} | ${schedule.subject}`;
       const instructor = schedule.instructor ? ` (${schedule.instructor})` : '';
       scheduleText += line + instructor + '\n';
     });

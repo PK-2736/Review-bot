@@ -66,14 +66,38 @@ class TodoScheduler {
       const schedules = ScheduleStore.getByDay(currentDay);
 
       for (const schedule of schedules) {
-        // 時間が一致したら実行
-        if (schedule.time === currentTime) {
+        // 授業時間から復習作成時間を計算（デフォルト：授業終了3時間後と想定）
+        const reviewTime = this.calculateReviewTime(schedule.time, schedule.reviewOffset || 180);
+        
+        // 復習作成時間が一致したら実行
+        if (reviewTime === currentTime) {
           await this.createAutoTask(schedule);
         }
       }
     } catch (error) {
       console.error('自動タスク作成エラー:', error);
     }
+  }
+
+  /**
+   * 復習タスク作成時間を計算
+   * @param {string} classTime - 授業時間（HH:MM形式）
+   * @param {number} offsetMinutes - 授業時間からのオフセット（分）
+   * @returns {string} 復習作成時間（HH:MM形式）
+   */
+  calculateReviewTime(classTime, offsetMinutes) {
+    const [hours, minutes] = classTime.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours);
+    date.setMinutes(minutes);
+    
+    // オフセット分を追加
+    date.setMinutes(date.getMinutes() + offsetMinutes);
+    
+    const reviewHours = String(date.getHours()).padStart(2, '0');
+    const reviewMinutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${reviewHours}:${reviewMinutes}`;
   }
 
   /**
