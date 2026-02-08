@@ -24,6 +24,12 @@ module.exports = {
       { time: '0 12 * * *', label: '昼' },   // 昼12:00
       { time: '20 19 * * *', label: '夜' },  // 夜19:20
     ],
+    // 週次レポート（毎週日曜日 21:00）
+    weeklyReport: {
+      enabled: true,
+      time: '0 21 * * 0',  // 毎週日曜21:00
+      channelId: '1468959638052540439',
+    },
   },
   autoReview: {
     // 自動復習タスク登録

@@ -32,6 +32,19 @@ class TodoScheduler {
       console.log(`⏰ ${schedule.label}の通知を設定しました: ${schedule.time}`);
     });
 
+    // 週次レポート
+    if (config.notification.weeklyReport.enabled) {
+      const reportJob = cron.schedule(config.notification.weeklyReport.time, async () => {
+        await this.sendWeeklyReport();
+      }, {
+        scheduled: true,
+        timezone: 'Asia/Tokyo'
+      });
+
+      this.jobs.push(reportJob);
+      console.log(`📊 週次レポートを設定しました: ${config.notification.weeklyReport.time}`);
+    }
+
     // 授業スケジュールの自動復習タスク作成
     this.startClassSchedules();
 
@@ -156,7 +169,177 @@ class TodoScheduler {
         embeds: [embed] 
       });
 
-      const totalTasks = todayTasks.length + overdueTasks.length;
+   
+
+  /**
+   * 週次レポートを送信
+   */
+  async sendWeeklyReport() {
+    try {
+      const channel = await this.client.channels.fetch(config.notification.weeklyReport.channelId);
+      
+      if (!channel) {
+        console.error('❌ レポートチャンネルが見つかりません:', config.notification.weeklyReport.channelId);
+        return;
+      }
+
+      // 過去7日間のタスク情報を取得
+      const report = await this.generateWeeklyReport();
+
+      // レポート用Embedを作成
+      const embed = new EmbedBuilder()
+        .setColor(report.color)
+        .setTitle('📊 週次お勉強レポート')
+        .setDescription(`先週（${report.weekStartDate} ～ ${report.weekEndDate}）の学習成果`)
+        .addFields(
+          {
+            name: '✅ 完了タスク',
+            value: `${report.completedCount}件`,
+            inline: true
+          },
+          {
+            name: '⏳ 未完了タスク',
+            value: `${report.pendingCount}件`,
+            inline: true
+          },
+          {
+            name: '📈 消化率',
+            value: `${report.completionRate}%`,
+            inline: true
+          }
+        );
+
+      // 評価を追加
+      embed.addFields({
+        name: '⭐ 評価',
+        value: report.evaluation,
+        inline: false
+      });
+
+      // 未完了タスクがあれば表示
+      if (report.pendingTasks.length > 0) {
+        const pendingList = report.pendingTasks.slice(0, 10).map(t => `• ${t.content}`).join('\n');
+        embed.addFields({
+          name: '🔄 この週に完了できなかったタスク',
+          value: pendingList || 'なし',
+          inline: false
+        });
+
+        if (report.pendingTasks.length > 10) {
+          embed.addFields({
+            name: '他',
+            value: `他 ${report.pendingTasks.length - 10}件`,
+            inline: false
+          });
+        }
+      }
+
+      // 統計情報
+      embed.addFields({
+        name: '📋 統計',
+        value: `復習タスク: ${report.reviewTaskCount}件\n他のタスク: ${report.otherTaskCount}件`,
+        inline: false
+      });
+
+      embed.setTimestamp();
+      embed.setFooter({ text: '💡 来週も頑張りましょう！' });
+
+      await channel.send({ embeds: [embed] });
+
+      console.log(`✅ 週次レポート送信完了 (完了率: ${report.completionRate}%)`);
+
+    } catch (error) {
+      console.error('週次レポート送信エラー:', error);
+    }
+  }
+
+  /**
+   * 週次レポートを生成
+   */
+  async generateWeeklyReport() {
+    try {
+      const today = new Date();
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // タスク情報を取得
+      const allTasks = await todoistService.api.getTasks();
+      
+      let completedCount = 0;
+      let pendingTasks = [];
+      let reviewTaskCount = 0;
+      let otherTaskCount = 0;
+
+      // タスクを分析
+      for (const task of allTasks) {
+        if (task.isCompleted) {
+          // 完了したタスクをカウント
+          if (task.completed_at) {
+            const completedDate = new Date(task.completed_at);
+            if (completedDate >= weekAgo && completedDate <= today) {
+              completedCount++;
+            }
+          }
+        } else {
+          // 未完了タスクを記録
+          pendingTasks.push(task);
+        }
+
+        // タスクの分類
+        if (task.labels && task.labels.includes('復習')) {
+          reviewTaskCount++;
+        } else {
+          otherTaskCount++;
+        }
+      }
+
+      const totalTasksThisWeek = completedCount + pendingTasks.length;
+      const completionRate = totalTasksThisWeek > 0 
+        ? Math.round((completedCount / totalTasksThisWeek) * 100) 
+        : 0;
+
+      // 評価を決定
+      let evaluation = '';
+      let color = '#4CAF50';
+
+      if (completionRate >= 90) {
+        evaluation = '🌟 素晴らしい！ほぼすべてのタスクを完了しました。この調子で！';
+        color = '#FFD700';
+      } else if (completionRate >= 70) {
+        evaluation = '👍 良好です。もう少し頑張ると完璧です。';
+        color = '#4CAF50';
+      } else if (completionRate >= 50) {
+        evaluation = '👌 半分以上完了しました。来週に向けて頑張りましょう。';
+        color = '#FF9800';
+      } else if (completionRate >= 30) {
+        evaluation = '💪 まだまだです。来週は目標達成を目指しましょう！';
+        color = '#FF5722';
+      } else {
+        evaluation = '⚠️ タスクが溜まっています。優先順位をつけて進めましょう。';
+        color = '#F44336';
+      }
+
+      // 形式化された日付
+      const weekStartDate = weekAgo.toLocaleDateString('ja-JP');
+      const weekEndDate = today.toLocaleDateString('ja-JP');
+
+      return {
+        completedCount,
+        pendingCount: pendingTasks.length,
+        completionRate,
+        evaluation,
+        color,
+        pendingTasks,
+        reviewTaskCount,
+        otherTaskCount,
+        weekStartDate,
+        weekEndDate,
+      };
+
+    } catch (error) {
+      console.error('週次レポート生成エラー:', error);
+      throw error;
+    }
+  }   const totalTasks = todayTasks.length + overdueTasks.length;
       console.log(`✅ ${label}のTODO通知を送信しました (積み残し: ${overdueTasks.length}件, 今日: ${todayTasks.length}件, 合計: ${totalTasks}件)`);
     } catch (error) {
       console.error(`❌ ${label}のTODO通知送信エラー:`, error);
