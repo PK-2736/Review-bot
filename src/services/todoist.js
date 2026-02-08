@@ -86,6 +86,44 @@ class TodoistService {
 
     return tasks;
   }
+
+  /**
+   * 今日のタスクを取得
+   * @returns {Promise<Array>} 今日のタスクリスト
+   */
+  async getTodayTasks() {
+    try {
+      const tasks = await this.api.getTasks();
+      const today = new Date().toISOString().split('T')[0];
+      
+      // 今日が期限、または期限切れのタスクをフィルタ
+      const todayTasks = tasks.filter(task => {
+        if (!task.due) return false;
+        const dueDate = task.due.date;
+        return dueDate <= today;
+      });
+
+      // 優先度でソート（高優先度が先）
+      return todayTasks.sort((a, b) => b.priority - a.priority);
+    } catch (error) {
+      console.error('今日のタスク取得エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * タスクを完了としてマーク
+   * @param {string} taskId - タスクID
+   */
+  async completeTask(taskId) {
+    try {
+      await this.api.closeTask(taskId);
+      return true;
+    } catch (error) {
+      console.error('タスク完了エラー:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new TodoistService();

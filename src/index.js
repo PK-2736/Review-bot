@@ -1,6 +1,8 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const config = require('./config');
 const reviewCommand = require('./commands/review');
+const todayCommand = require('./commands/today');
+const TodoScheduler = require('./scheduler');
 
 // Discord クライアントの初期化
 const client = new Client({
@@ -14,11 +16,53 @@ const client = new Client({
 // コマンドの登録
 client.commands = new Collection();
 client.commands.set('review', reviewCommand);
+client.commands.set('today', todayCommand);
+
+// スラッシュコマンドの登録
+const commands = [todayCommand.data.toJSON()];
+
+const rest = new REST({ version: '10' }).setToken(config.discord.token);
 
 // Bot が準備完了したときの処理
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`✅ ${client.user.tag} としてログインしました！`);
   console.log(`📚 復習管理botが起動しました`);
+
+  try {
+    console.log('🔄 スラッシュコマンドを登録中...');
+    await rest.put(
+      Routes.applicationCommands(config.discord.clientId),
+      { body: commands },
+    );
+    console.log('✅ スラッシュコマンドの登録が完了しました');
+  } catch (error) {
+    console.error('❌ スラッシュコマンドの登録に失敗しました:', error);
+  }
+
+  // TODOスケジューラーを開始
+  const scheduler = new TodoScheduler(client);
+  scheduler.start();
+});
+
+// スラッシュコマンドの処理
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(`スラッシュコマンド実行エラー: ${error}`);
+    const reply = { content: '❌ コマンドの実行中にエラーが発生しました。', ephemeral: true };
+    
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(reply);
+    } else {
+      await interaction.reply(reply);
+    }
+  }
 });
 
 // メッセージを受信したときの処理

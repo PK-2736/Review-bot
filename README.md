@@ -11,6 +11,8 @@ Review-botは、Discordから学習内容を登録すると、科学的な復習
 - 📚 Discordコマンドで簡単に復習タスクを登録
 - ⏰ 自動的に最適な間隔で復習タスクを作成（1日後、3日後、7日後、14日後、30日後）
 - ✅ Todoistで復習タスクを管理
+- 📋 今日のTODOリストを定期的に通知（朝8:20、昼12:00、夜19:20）
+- 🔔 スラッシュコマンドで手動でTODOリストを確認可能
 
 ## セットアップ
 
@@ -33,10 +35,12 @@ cp .env.example .env
 1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
 2. 「New Application」をクリックして新しいアプリケーションを作成
 3. 「Bot」タブに移動して Bot を作成
-4. Token をコピーして `.env` の `DISCORD_TOKEN` に設定
-5. 「OAuth2」→「URL Generator」でBot招待URLを生成
-   - SCOPES: `bot`
-   - BOT PERMISSIONS: `Send Messages`, `Read Message History`
+4. **⚠️ 重要: Privileged Gateway Intents で「MESSAGE CONTENT INTENT」をONにする**
+5. Token をコピーして `.env` の `DISCORD_TOKEN` に設定
+6. 「General Information」タブでアプリケーションIDをコピーして `DISCORD_CLIENT_ID` に設定
+7. 「OAuth2」→「URL Generator」でBot招待URLを生成
+   - SCOPES: `bot`, `applications.commands`
+   - BOT PERMISSIONS: `Send Messages`, `Read Message History`, `Use Slash Commands`
 
 #### Todoist API Token の取得
 
@@ -56,6 +60,8 @@ npm run dev
 ```
 
 ## 使い方
+
+### 復習タスクの作成
 
 Discordで以下のコマンドを使用します：
 
@@ -77,6 +83,24 @@ Discordで以下のコマンドを使用します：
 - 3回目: 7日後
 - 4回目: 14日後
 - 5回目: 30日後
+
+### 今日のTODOリストを確認
+
+スラッシュコマンドで今日のタスクを確認できます：
+
+```
+/today
+```
+
+このコマンドは、以下の時間に自動的に指定チャンネルに送信されます：
+- 🌅 朝 8:20
+- 🌞 昼 12:00
+- 🌙 夜 19:20
+
+TODOリストは優先度別に色分けされて表示されます：
+- 🔴 高優先度
+- 🟡 中優先度
+- ⚪ 通常
 
 ## プロジェクト構造
 
@@ -108,6 +132,24 @@ intervals: [1, 3, 7, 14, 30], // 日数の配列
 ### プロジェクト名の変更
 
 `.env` ファイルで `DEFAULT_PROJECT_NAME` を変更できます。
+
+### 通知チャンネルの変更
+
+`.env` ファイルで `TODO_NOTIFICATION_CHANNEL_ID` を変更することで、TODOリストを送信するチャンネルを変更できます。
+
+### 通知時間の変更
+
+[src/config.js](src/config.js) の `notification.schedules` を編集することで、通知時間をカスタマイズできます：
+
+```javascript
+schedules: [
+  { time: '20 8 * * *', label: '朝' },   // 朝8:20
+  { time: '0 12 * * *', label: '昼' },   // 昼12:00
+  { time: '20 19 * * *', label: '夜' },  // 夜19:20
+],
+```
+
+cron形式で指定します（分 時 日 月 曜日）。
 
 ## デプロイ（Oracle Ubuntu + GitHub Actions）
 
@@ -243,6 +285,13 @@ chmod +x scripts/local-deploy.sh
 1. 環境変数を確認: `cat ~/Review-bot/.env`
 2. Discord/Todoist トークンが有効か確認
 3. エラーログを確認: `pm2 logs review-bot --err`
+4. **Discord Developer Portal で「MESSAGE CONTENT INTENT」が有効になっているか確認**
+
+### TODOリスト通知が届かない場合
+
+1. `.env` の `TODO_NOTIFICATION_CHANNEL_ID` が正しいか確認
+2. Botがそのチャンネルにアクセスできるか確認
+3. スケジューラーのログを確認: `pm2 logs review-bot | grep "📅"`
 
 ### メモリ不足の場合
 
