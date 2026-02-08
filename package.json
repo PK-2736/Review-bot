@@ -1,0 +1,27 @@
+{
+  "name": "review-bot",
+  "version": "1.0.0",
+  "description": "DiscordとTodoistを連携した復習管理bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs review-bot",
+    "pm2:monit": "pm2 monit"
+  },
+  "keywords": ["discord", "todoist", "review", "bot"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@doist/todoist-api-typescript": "^3.0.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "pm2": "^5.3.0"
+  }
+}

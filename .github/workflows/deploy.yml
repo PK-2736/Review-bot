@@ -1,0 +1,93 @@
+name: Deploy to Oracle Ubuntu
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+          DEFAULT_PROJECT_NAME: ${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
+        run: |
+          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
+            set -e
+            
+            echo "📦 Deploying Review-bot..."
+            
+            # プロジェクトディレクトリに移動（なければクローン）
+            if [ -d "~/Review-bot" ]; then
+              cd ~/Review-bot
+              echo "🔄 Pulling latest changes..."
+              git pull origin main
+            else
+              echo "📥 Cloning repository..."
+              cd ~
+              git clone https://github.com/${{ github.repository }}.git
+              cd Review-bot
+            fi
+            
+            # 依存関係のインストール
+            echo "📚 Installing dependencies..."
+            npm install --production
+            
+            # 環境変数ファイルの作成
+            echo "🔐 Creating .env file..."
+            cat > .env << 'EOF'
+          DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+          TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}
+          DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
+          EOF
+            
+            # PM2がインストールされているか確認
+            if ! command -v pm2 &> /dev/null; then
+              echo "📦 Installing PM2..."
+              npm install -g pm2
+            fi
+            
+            # PM2でアプリケーションを起動/再起動
+            echo "🚀 Starting/Restarting application with PM2..."
+            pm2 restart ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
+            
+            # PM2の自動起動設定を保存
+            pm2 save
+            
+            echo "✅ Deployment completed successfully!"
+            echo "📊 Application status:"
+            pm2 list
+          ENDSSH
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
