@@ -1,6 +1,14 @@
 const { TodoistApi } = require('@doist/todoist-api-typescript');
 const config = require('../config');
 
+function getTaskDueDate(task) {
+  if (!task || !task.due) return null;
+  const raw = task.due.datetime || task.due.date;
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 class TodoistService {
   constructor() {
     this.api = new TodoistApi(config.todoist.apiToken);
@@ -149,25 +157,20 @@ class TodoistService {
   async getTodayTasks() {
     try {
       const tasks = await this.api.getTasks();
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
       
       // 今日が期限のタスクのみ
-      const oneMonthAgo = new Date();
+      const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      const oneMonthAgoStr = oneMonthAgo.toISOString().split('T')[0];
       
-      // 今日が期限のタスク かつ 作成日が1ヶ月以内
+      // 今日が期限のタスク かつ 期限日が1ヶ月以内
       const todayTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.due.date !== today) return false;
-        
-        // 作成日が1ヶ月以上前の場合は表示しない
-        if (task.createdAt) {
-          const createdDate = task.createdAt.split('T')[0];
-          if (createdDate < oneMonthAgoStr) return false;
-        }
-        
-        return true;
+        const dueDate = getTaskDueDate(task);
+        if (!dueDate) return false;
+        return dueDate >= oneMonthAgo;
       });
 
       // 優先度でソート（高優先度が先）
@@ -185,24 +188,19 @@ class TodoistService {
   async getOverdueTasks() {
     try {
       const tasks = await this.api.getTasks();
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
       
-      const oneMonthAgo = new Date();
+      const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      const oneMonthAgoStr = oneMonthAgo.toISOString().split('T')[0];
       
-      // 昨日以前が期限のタスク かつ 作成日が1ヶ月以内
+      // 昨日以前が期限のタスク かつ 期限日が1ヶ月以内
       const overdueTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.due.date >= today) return false;
-        
-        // 作成日が1ヶ月以上前の場合は表示しない
-        if (task.createdAt) {
-          const createdDate = task.createdAt.split('T')[0];
-          if (createdDate < oneMonthAgoStr) return false;
-        }
-        
-        return true;
+        const dueDate = getTaskDueDate(task);
+        if (!dueDate) return false;
+        return dueDate >= oneMonthAgo;
       });
 
       // 優先度でソート（高優先度が先）
