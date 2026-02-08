@@ -103,6 +103,19 @@ client.on('messageCreate', async (message) => {
   // Bot 自身のメッセージは無視
   if (message.author.bot) return;
 
+  // 自動復習タスク登録チェック
+  if (config.autoReview.enabled && 
+      message.channelId === config.autoReview.channelId && 
+      message.author.id === config.autoReview.userId) {
+    
+    try {
+      await handleAutoReviewMessage(message);
+    } catch (error) {
+      console.error('自動復習タスク登録エラー:', error);
+    }
+    return;
+  }
+
   // プレフィックスコマンド（!で始まる）
   if (!message.content.startsWith('!')) return;
 
@@ -119,6 +132,43 @@ client.on('messageCreate', async (message) => {
     await message.reply('❌ コマンドの実行中にエラーが発生しました。');
   }
 });
+
+/**
+ * 自動復習タスク登録処理
+ */
+async function handleAutoReviewMessage(message) {
+  try {
+    const content = message.content.trim();
+    
+    if (content.length === 0) {
+      await message.react('❌');
+      return;
+    }
+
+    // 復習タスクを作成
+    const tasks = await todoistService.createReviewSeries(content, 'normal');
+
+    // 確認メッセージを送信
+    const embed = new EmbedBuilder()
+      .setColor('#4CAF50')
+      .setTitle('✅ 復習タスク自動登録完了')
+      .setDescription(`**${content}** の復習スケジュールを作成しました`)
+      .addFields(
+        { name: '📊 作成内容', value: `${tasks.length}件の復習タスク`, inline: false },
+        { name: '📅 期間', value: 'エビングハウス忘却曲線に基づいた1ヶ月間', inline: false }
+      )
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+    await message.react('👍');
+
+    console.log(`✅ 自動復習タスク登録: "${content}" (${tasks.length}件)`);
+
+  } catch (error) {
+    console.error('自動復習タスク登録エラー:', error);
+    await message.react('❌');
+  }
+}
 
 // エラーハンドリング
 client.on('error', (error) => {

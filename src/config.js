@@ -25,4 +25,10 @@ module.exports = {
       { time: '20 19 * * *', label: '夜' },  // 夜19:20
     ],
   },
+  autoReview: {
+    // 自動復習タスク登録
+    enabled: true,
+    channelId: '1468960514238582878',  // メッセージを受け取るチャンネルID
+    userId: '726195003780628621',      // 対象ユーザーID
+  },
 };
