@@ -162,7 +162,7 @@ jobs:
             echo ""
             echo "📊 Application Status:"
             pm2 list
-            pm2 logs review-bot --lines 10
+            pm2 logs review-bot --lines 10 --nostream
             
             echo ""
             echo "========================================="
