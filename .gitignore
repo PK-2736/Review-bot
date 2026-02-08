@@ -10,6 +10,10 @@ logs/
 npm-debug.log*
 .pm2/
 
+# Data files
+src/data/
+data/
+
 # OS files
 .DS_Store
 Thumbs.db
