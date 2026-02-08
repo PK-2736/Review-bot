@@ -73,58 +73,14 @@ client.on('interactionCreate', async (interaction) => {
 
   // スレクトメニュー処理
   if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'task-done-select') {
-      await handleTaskCompletion(interaction);
+    if (interaction.customId === 'task-done-select' || 
+        interaction.customId === 'done-select-primary' || 
+        interaction.customId === 'done-select-fallback') {
+      // done.js が直接処理するため、ここでは何もしない
+      // /done コマンドで既に handled
     }
   }
 });
-
-/**
- * タスク完了処理
- * @param {Interaction} interaction
- */
-async function handleTaskCompletion(interaction) {
-  await interaction.deferReply();
-
-  try {
-    const selectedTaskIds = interaction.values;
-    const completedTasks = [];
-    const failedTasks = [];
-
-    for (const taskId of selectedTaskIds) {
-      try {
-        await todoistService.completeTask(taskId);
-        completedTasks.push(taskId);
-      } catch (error) {
-        console.error(`タスク完了エラー (${taskId}):`, error);
-        failedTasks.push(taskId);
-      }
-    }
-
-    // 完了結果のメッセージを作成
-    let resultMessage = '';
-    if (completedTasks.length > 0) {
-      resultMessage += `✅ **${completedTasks.length}件完了しました！**\n`;
-    }
-    if (failedTasks.length > 0) {
-      resultMessage += `❌ **${failedTasks.length}件失敗しました**\n`;
-    }
-
-    const embed = new EmbedBuilder()
-      .setColor(failedTasks.length === 0 ? '#4CAF50' : '#FF9800')
-      .setTitle('🎉 タスク完了結果')
-      .setDescription(resultMessage)
-      .setTimestamp();
-
-    await interaction.editReply({ embeds: [embed], components: [] });
-
-    console.log(`✅ タスク完了: ${completedTasks.length}件完了, ${failedTasks.length}件失敗`);
-
-  } catch (error) {
-    console.error('タスク完了エラー:', error);
-    await interaction.editReply('❌ タスクの完了に失敗しました。');
-  }
-}
 
 // メッセージを受信したときの処理
 client.on('messageCreate', async (message) => {
