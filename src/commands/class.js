@@ -15,6 +15,16 @@ module.exports = {
     )
     .addStringOption(option =>
       option
+        .setName('mode')
+        .setDescription('復習モード')
+        .setRequired(false)
+        .addChoices(
+          { name: '通常モード（5回・1ヶ月）', value: 'normal' },
+          { name: '完全習得モード（8回・半年間）', value: 'mastery' }
+        )
+    )
+    .addStringOption(option =>
+      option
         .setName('content')
         .setDescription('授業内容の説明（復習のポイント）')
         .setRequired(false)
@@ -35,10 +45,11 @@ module.exports = {
       const subject = interaction.options.getString('subject');
       const content = interaction.options.getString('content') || '';
       const instructor = interaction.options.getString('instructor') || '';
+      const mode = interaction.options.getString('mode') || 'normal';
 
       // 復習タスクを作成
       const baseContent = createTaskContent(subject, content, instructor);
-      const tasks = await todoistService.createReviewSeries(baseContent);
+      const tasks = await todoistService.createReviewSeries(baseContent, mode);
 
       if (tasks.length === 0) {
         await interaction.editReply('❌ 復習タスクの作成に失敗しました。');
@@ -46,7 +57,7 @@ module.exports = {
       }
 
       // 完了メッセージを作成
-      const embed = createClassRegistrationEmbed(subject, content, instructor, tasks);
+      const embed = createClassRegistrationEmbed(subject, content, instructor, tasks, mode);
       await interaction.editReply({ embeds: [embed] });
 
       console.log(`✅ 授業タスク登録: ${subject} (${tasks.length}件の復習タスク作成)`);
@@ -85,16 +96,23 @@ function createTaskContent(subject, content, instructor) {
  * @param {string} content - 内容
  * @param {string} instructor - 講師名
  * @param {Array} tasks - 作成されたタスク
+ * @param {string} mode - 復習モード
  * @returns {EmbedBuilder}
  */
-function createClassRegistrationEmbed(subject, content, instructor, tasks) {
-  const intervals = config.review.intervals;
+function createClassRegistrationEmbed(subject, content, instructor, tasks, mode = 'normal') {
+  const intervals = config.review.intervals[mode] || config.review.intervals.normal;
   const today = new Date();
 
+  const modeLabel = mode === 'mastery' ? '完全習得モード' : '通常モード';
+  const modeEmoji = mode === 'mastery' ? '🎯' : '📚';
+  const modeDescription = mode === 'mastery' 
+    ? '長期記憶の定着を目指す徹底的な復習スケジュールです（半年間・8回）' 
+    : 'エビングハウスの忘却曲線に基づいた復習スケジュールです（1ヶ月・5回）';
+
   const embed = new EmbedBuilder()
-    .setColor('#2196F3')
-    .setTitle('📚 授業復習タスク登録完了')
-    .setDescription(`**${subject}** の復習スケジュールを作成しました`)
+    .setColor(mode === 'mastery' ? '#9C27B0' : '#2196F3')
+    .setTitle(`${modeEmoji} 授業復習タスク登録完了`)
+    .setDescription(`**${subject}** の復習スケジュールを作成しました（${modeLabel}）`)
     .setTimestamp();
 
   if (instructor) {
@@ -125,7 +143,7 @@ function createClassRegistrationEmbed(subject, content, instructor, tasks) {
 
   embed.addFields({ 
     name: '✅ 作成済み', 
-    value: `${tasks.length}件の復習タスクを自動作成しました\nエビングハウスの忘却曲線に基づいた時間配置です`,
+    value: `${tasks.length}件の復習タスクを自動作成しました\n${modeDescription}`,
     inline: false 
   });
 

@@ -63,9 +63,10 @@ class TodoistService {
   /**
    * 複数の復習タスクを一度に作成（間隔復習用）
    * @param {string} baseContent - タスクのベース内容
-   * @param {number[]} intervals - 復習間隔（日数）の配列
+   * @param {string} mode - 復習モード ('normal' または 'mastery')
    */
-  async createReviewSeries(baseContent, intervals = config.review.intervals) {
+  async createReviewSeries(baseContent, mode = 'normal') {
+    const intervals = config.review.intervals[mode] || config.review.intervals.normal;
     const tasks = [];
     const today = new Date();
 
@@ -78,7 +79,7 @@ class TodoistService {
 
       try {
         const task = await this.createReviewTask(content, dueDate, priority);
-        tasks.push(task);
+        tasks.push({ ...task, interval: intervals[i] });
       } catch (error) {
         console.error(`タスク作成失敗 (${i + 1}回目):`, error);
       }
