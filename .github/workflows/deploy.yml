@@ -39,14 +39,27 @@ jobs:
             
             echo "📦 Deploying Review-bot..."
             
+            # Node.js がインストールされているか確認
+            if ! command -v node &> /dev/null; then
+              echo "📥 Installing Node.js..."
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt install -y nodejs
+            fi
+            
+            # Git がインストールされているか確認
+            if ! command -v git &> /dev/null; then
+              echo "📦 Installing Git..."
+              sudo apt install -y git
+            fi
+            
             # プロジェクトディレクトリに移動（なければクローン）
-            if [ -d "~/Review-bot" ]; then
-              cd ~/Review-bot
+            if [ -d "$HOME/Review-bot" ]; then
+              cd $HOME/Review-bot
               echo "🔄 Pulling latest changes..."
               git pull origin main
             else
               echo "📥 Cloning repository..."
-              cd ~
+              cd $HOME
               git clone https://github.com/${{ github.repository }}.git
               cd Review-bot
             fi
@@ -58,16 +71,16 @@ jobs:
             # 環境変数ファイルの作成
             echo "🔐 Creating .env file..."
             cat > .env << 'EOF'
-          DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-          DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
-          TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}
-          DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
-          EOF
+DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}
+DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
+EOF
             
             # PM2がインストールされているか確認
             if ! command -v pm2 &> /dev/null; then
               echo "📦 Installing PM2..."
-              npm install -g pm2
+              sudo npm install -g pm2
             fi
             
             # PM2でアプリケーションを起動/再起動
