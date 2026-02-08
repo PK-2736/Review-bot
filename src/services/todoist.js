@@ -5,6 +5,7 @@ class TodoistService {
   constructor() {
     this.api = new TodoistApi(config.todoist.apiToken);
     this.projectId = null;
+    this.projectCache = new Map();
   }
 
   /**
@@ -13,22 +14,36 @@ class TodoistService {
   async getOrCreateProject() {
     if (this.projectId) return this.projectId;
 
+    const projectId = await this.getOrCreateProjectByName(config.review.defaultProjectName);
+    this.projectId = projectId;
+    return projectId;
+  }
+
+  /**
+   * 指定名のプロジェクトを取得または作成
+   * @param {string} projectName
+   */
+  async getOrCreateProjectByName(projectName) {
+    if (this.projectCache.has(projectName)) {
+      return this.projectCache.get(projectName);
+    }
+
     try {
       const projects = await this.api.getProjects();
       const reviewProject = projects.find(
-        (p) => p.name === config.review.defaultProjectName
+        (p) => p.name === projectName
       );
 
       if (reviewProject) {
-        this.projectId = reviewProject.id;
+        this.projectCache.set(projectName, reviewProject.id);
       } else {
         const newProject = await this.api.addProject({
-          name: config.review.defaultProjectName,
+          name: projectName,
         });
-        this.projectId = newProject.id;
+        this.projectCache.set(projectName, newProject.id);
       }
 
-      return this.projectId;
+      return this.projectCache.get(projectName);
     } catch (error) {
       console.error('Todoist プロジェクト取得エラー:', error);
       throw error;
@@ -56,6 +71,45 @@ class TodoistService {
       return task;
     } catch (error) {
       console.error('Todoist タスク作成エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Google Classroom タスクを作成
+   * @param {Object} payload
+   */
+  async createClassroomTask(payload) {
+    try {
+      const projectId = await this.getOrCreateProjectByName(config.classroom.projectName);
+      const task = await this.api.addTask({
+        content: payload.content,
+        description: payload.description,
+        projectId,
+        dueDate: payload.dueDate,
+        dueDatetime: payload.dueDatetime,
+        dueTimezone: payload.dueTimezone,
+        labels: ['Classroom'],
+      });
+
+      return task;
+    } catch (error) {
+      console.error('Todoist Classroom タスク作成エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * タスクを更新
+   * @param {string} taskId
+   * @param {Object} payload
+   */
+  async updateTask(taskId, payload) {
+    try {
+      await this.api.updateTask(taskId, payload);
+      return true;
+    } catch (error) {
+      console.error('Todoist タスク更新エラー:', error);
       throw error;
     }
   }

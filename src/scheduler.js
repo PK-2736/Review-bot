@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const todoistService = require('./services/todoist');
+const classroomService = require('./services/classroomService');
 const ScheduleStore = require('./services/scheduleStore');
 const ReminderStore = require('./services/reminderStore');
 const { createTodoEmbed, createTaskSummary } = require('./commands/today');
@@ -53,6 +54,9 @@ class TodoScheduler {
     // 週間リマインダーの自動実行
     this.startReminders();
 
+    // Google Classroom 同期
+    this.startClassroomSync();
+
     console.log('✅ スケジューラーが起動しました');
   }
 
@@ -86,6 +90,37 @@ class TodoScheduler {
 
     this.jobs.push(reminderJob);
     console.log('🔔 週間リマインダー自動実行を開始しました');
+  }
+
+  /**
+   * Google Classroom 同期を開始
+   */
+  startClassroomSync() {
+    if (!config.classroom.enabled) {
+      return;
+    }
+
+    const classroomJob = cron.schedule(config.classroom.syncTime, async () => {
+      await this.syncClassroomTasks();
+    }, {
+      scheduled: true,
+      timezone: config.classroom.timezone || 'Asia/Tokyo'
+    });
+
+    this.jobs.push(classroomJob);
+    console.log(`🎓 Classroom同期を設定しました: ${config.classroom.syncTime}`);
+  }
+
+  /**
+   * Google Classroom 課題の同期
+   */
+  async syncClassroomTasks() {
+    try {
+      const result = await classroomService.syncPendingTasks();
+      console.log(`✅ Classroom同期完了 (追加: ${result.created}, 更新: ${result.updated}, 完了: ${result.closed}, スキップ: ${result.skipped})`);
+    } catch (error) {
+      console.error('Classroom同期エラー:', error);
+    }
   }
 
   /**

@@ -31,6 +31,25 @@ module.exports = {
       channelId: '1468959638052540439',
     },
   },
+  classroom: {
+    enabled: process.env.CLASSROOM_ENABLED === 'true',
+    syncTime: process.env.CLASSROOM_SYNC_TIME || '0 7 * * *',
+    dueWithinDays: Number(process.env.CLASSROOM_DUE_WITHIN_DAYS || 7),
+    courseIds: process.env.CLASSROOM_COURSE_IDS
+      ? process.env.CLASSROOM_COURSE_IDS.split(',').map(item => item.trim()).filter(Boolean)
+      : [],
+    projectName: process.env.CLASSROOM_PROJECT_NAME || 'Classroom',
+    timezone: process.env.CLASSROOM_TIMEZONE || 'Asia/Tokyo',
+    autoCloseCompleted: process.env.CLASSROOM_AUTO_CLOSE === 'true',
+    auth: {
+      serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+      impersonateUser: process.env.GOOGLE_IMPERSONATE_USER,
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+      redirectUri: process.env.GOOGLE_REDIRECT_URI,
+    },
+  },
   autoReview: {
     // 自動復習タスク登録
     enabled: true,

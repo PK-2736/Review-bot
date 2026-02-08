@@ -12,13 +12,19 @@
     "pm2:logs": "pm2 logs review-bot",
     "pm2:monit": "pm2 monit"
   },
-  "keywords": ["discord", "todoist", "review", "bot"],
+  "keywords": [
+    "discord",
+    "todoist",
+    "review",
+    "bot"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.14.1",
     "@doist/todoist-api-typescript": "^3.0.3",
+    "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
+    "googleapis": "^136.0.0",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {
