@@ -204,7 +204,6 @@ class TodoistService {
         
         return true;
       });
-      });
 
       // 優先度でソート（高優先度が先）
       return overdueTasks.sort((a, b) => b.priority - a.priority);
