@@ -3,6 +3,7 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const todoistService = require('./services/todoist');
 const ScheduleStore = require('./services/scheduleStore');
+const ReminderStore = require('./services/reminderStore');
 const { createTodoEmbed, createTaskSummary } = require('./commands/today');
 
 const DAY_NUMBERS = { '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6, '日': 0 };
@@ -49,6 +50,9 @@ class TodoScheduler {
     // 授業スケジュールの自動復習タスク作成
     this.startClassSchedules();
 
+    // 週間リマインダーの自動実行
+    this.startReminders();
+
     console.log('✅ スケジューラーが起動しました');
   }
 
@@ -66,6 +70,84 @@ class TodoScheduler {
 
     this.jobs.push(scheduleJob);
     console.log('🔄 授業スケジュール自動実行を開始しました');
+  }
+
+  /**
+   * 週間リマインダーを開始
+   */
+  startReminders() {
+    // 毎分チェック
+    const reminderJob = cron.schedule('* * * * *', async () => {
+      await this.checkAndExecuteReminders();
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Tokyo'
+    });
+
+    this.jobs.push(reminderJob);
+    console.log('🔔 週間リマインダー自動実行を開始しました');
+  }
+
+  /**
+   * リマインダーをチェックして実行
+   */
+  async checkAndExecuteReminders() {
+    try {
+      const now = new Date();
+      const currentDay = DAY_NAMES[now.getDay()];
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const reminders = ReminderStore.getByDay(currentDay);
+
+      for (const reminder of reminders) {
+        // リマインダー実行時間が一致したら実行
+        if (reminder.time === currentTime) {
+          await this.executeReminder(reminder);
+        }
+      }
+    } catch (error) {
+      console.error('リマインダー実行エラー:', error);
+    }
+  }
+
+  /**
+   * リマインダーを実行
+   */
+  async executeReminder(reminder) {
+    try {
+      // Todoistにタスクを追加
+      await todoistService.api.addTask({
+        content: reminder.content,
+        dueDate: new Date(),
+      });
+
+      // 実行日時を記録
+      ReminderStore.update(reminder.id, {
+        lastExecuted: new Date().toISOString(),
+      });
+
+      // Discord チャンネルに通知
+      const channel = await this.client.channels.fetch(config.notification.channelId);
+      if (channel) {
+        const dayName = reminder.day + '曜日';
+        const embed = new EmbedBuilder()
+          .setColor('#FF9800')
+          .setTitle('🔔 リマインダー実行')
+          .addFields(
+            { name: '曜日', value: dayName, inline: true },
+            { name: '実行時間', value: reminder.time, inline: true },
+            { name: 'リマインダー', value: reminder.content, inline: false }
+          )
+          .setDescription('📝 TODOリストに追加されました')
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+      }
+
+      console.log(`✅ リマインダー実行: ID=${reminder.id} - ${reminder.content}`);
+    } catch (error) {
+      console.error(`リマインダー実行失敗 (ID=${reminder.id}):`, error);
+    }
   }
 
   /**
