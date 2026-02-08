@@ -121,12 +121,10 @@ jobs:
             # Environment setup
             echo ""
             echo "🔐 Creating .env file..."
-            cat > .env << 'EOF'
-DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
-TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}
-DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}
-EOF
+            echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" > .env
+            echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> .env
+            echo "TODOIST_API_TOKEN=${{ secrets.TODOIST_API_TOKEN }}" >> .env
+            echo "DEFAULT_PROJECT_NAME=${{ secrets.DEFAULT_PROJECT_NAME || '復習タスク' }}" >> .env
             echo "✅ .env file created"
             
             # PM2 setup
