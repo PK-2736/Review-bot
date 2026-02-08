@@ -31,12 +31,14 @@ const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON(), classCo
 const rest = new REST({ version: '10' }).setToken(config.discord.token);
 
 // Bot が準備完了したときの処理
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} としてログインしました！`);
   console.log(`📚 復習管理botが起動しました`);
 
   try {
     console.log('🔄 スラッシュコマンドを登録中...');
+    console.log(`📝 登録するコマンド: ${commands.map(c => c.name).join(', ')}`);
+    
     await rest.put(
       Routes.applicationCommands(config.discord.clientId),
       { body: commands },
@@ -44,6 +46,10 @@ client.once('ready', async () => {
     console.log('✅ スラッシュコマンドの登録が完了しました');
   } catch (error) {
     console.error('❌ スラッシュコマンドの登録に失敗しました:', error);
+    console.error('エラー詳細:', error.message);
+    if (error.rawError) {
+      console.error('Raw Error:', JSON.stringify(error.rawError, null, 2));
+    }
   }
 
   // TODOスケジューラーを開始
