@@ -3,7 +3,6 @@ const config = require('./config');
 const reviewCommand = require('./commands/review');
 const todayCommand = require('./commands/today');
 const doneCommand = require('./commands/done');
-const classCommand = require('./commands/class');
 const scheduleCommand = require('./commands/schedule');
 const reminderCommand = require('./commands/reminder');
 const classroomCommand = require('./commands/classroom');
@@ -24,13 +23,12 @@ client.commands = new Collection();
 client.commands.set('review', reviewCommand);
 client.commands.set('today', todayCommand);
 client.commands.set('done', doneCommand);
-client.commands.set('class', classCommand);
 client.commands.set('schedule', scheduleCommand);
 client.commands.set('reminder', reminderCommand);
 client.commands.set('classroom', classroomCommand);
 
 // スラッシュコマンドの登録
-const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON(), classCommand.data.toJSON(), scheduleCommand.data.toJSON(), reminderCommand.data.toJSON(), classroomCommand.data.toJSON()];
+const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON(), scheduleCommand.data.toJSON(), reminderCommand.data.toJSON(), classroomCommand.data.toJSON()];
 
 const rest = new REST({ version: '10' }).setToken(config.discord.token);
 
