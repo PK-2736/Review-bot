@@ -132,12 +132,52 @@ class TodoScheduler {
       const currentDay = DAY_NAMES[now.getDay()];
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-      const reminders = ReminderStore.getByDay(currentDay);
+      // 全てのリマインダーを取得
+      const allReminders = ReminderStore.getAll();
 
-      for (const reminder of reminders) {
-        // リマインダー実行時間が一致したら実行
-        if (reminder.time === currentTime) {
-          await this.executeReminder(reminder);
+      for (const reminder of allReminders) {
+        // intensive モード（7日集中型）
+        if (reminder.mode === 'intensive') {
+          // 初回実行か確認
+          if (!reminder.intensiveStartDate) {
+            // 初回実行時刻チェック
+            if (reminder.day === currentDay && reminder.time === currentTime) {
+              // intensiveStartDate を記録
+              ReminderStore.update(reminder.id, {
+                intensiveStartDate: now.toISOString(),
+              });
+              await this.executeReminder(reminder, 'intensive');
+            }
+          } else {
+            // 2回目以降
+            const startDate = new Date(reminder.intensiveStartDate);
+            const daysSinceStart = Math.floor((now - startDate) / (24 * 60 * 60 * 1000));
+
+            // 7日経過したら削除
+            if (daysSinceStart >= 7) {
+              ReminderStore.remove(reminder.id);
+              console.log(`✅ 集中型リマインダー期限終了・削除: ID=${reminder.id}`);
+              continue;
+            }
+
+            // 時刻が一致したら実行
+            if (reminder.time === currentTime) {
+              await this.executeReminder(reminder, 'intensive');
+            }
+          }
+        }
+        // once モード（一度だけ）
+        else if (reminder.mode === 'once' || reminder.once) {
+          if (reminder.day === currentDay && reminder.time === currentTime) {
+            await this.executeReminder(reminder, 'once');
+            ReminderStore.remove(reminder.id);
+          }
+        }
+        // normal モード（毎週）
+        else {
+          if (reminder.day === currentDay && reminder.time === currentTime) {
+            await this.executeReminder(reminder, 'normal');
+          }
         }
       }
     } catch (error) {
@@ -148,7 +188,7 @@ class TodoScheduler {
   /**
    * リマインダーを実行
    */
-  async executeReminder(reminder) {
+  async executeReminder(reminder, mode = 'normal') {
     try {
       // Todoistにタスクを追加
       await todoistService.api.addTask({
@@ -160,7 +200,13 @@ class TodoScheduler {
       const channel = await this.client.channels.fetch(config.notification.channelId);
       if (channel) {
         const dayName = reminder.day + '曜日';
-        const onceLabel = reminder.once ? '(1回のみ実行)' : '';
+        let modeLabel = '';
+        if (mode === 'intensive') {
+          modeLabel = '(7日集中)';
+        } else if (mode === 'once') {
+          modeLabel = '(1回のみ実行)';
+        }
+
         const embed = new EmbedBuilder()
           .setColor('#FF9800')
           .setTitle('🔔 リマインダー実行')
@@ -170,24 +216,24 @@ class TodoScheduler {
             { name: 'リマインダー', value: reminder.content, inline: false }
           )
           .setDescription('📝 TODOリストに追加されました')
-          .setFooter({ text: onceLabel })
+          .setFooter({ text: modeLabel })
           .setTimestamp();
 
         await channel.send({ embeds: [embed] });
       }
 
-      // once=true の場合は実行後に削除
-      if (reminder.once) {
-        ReminderStore.remove(reminder.id);
-        console.log(`✅ 一度だけリマインダー実行・削除: ID=${reminder.id}, ${reminder.day}曜日 ${reminder.time}`);
-      } else {
-        // 実行日時を記録
-        ReminderStore.update(reminder.id, {
-          lastExecuted: new Date().toISOString(),
-        });
-      }
+      // 実行日時を記録
+      ReminderStore.update(reminder.id, {
+        lastExecuted: new Date().toISOString(),
+      });
 
-      console.log(`✅ リマインダー実行: ID=${reminder.id} - ${reminder.content}`);
+      if (mode === 'intensive') {
+        console.log(`✅ 集中型リマインダー実行: ID=${reminder.id} - ${reminder.content}`);
+      } else if (mode === 'once') {
+        console.log(`✅ 一度だけリマインダー実行: ID=${reminder.id} - ${reminder.content}`);
+      } else {
+        console.log(`✅ リマインダー実行: ID=${reminder.id} - ${reminder.content}`);
+      }
     } catch (error) {
       console.error(`リマインダー実行失敗 (ID=${reminder.id}):`, error);
     }

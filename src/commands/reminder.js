@@ -45,6 +45,17 @@ module.exports = {
             .setDescription('一度だけ実行するか（指定時のみ実行、デフォルト：毎週）')
             .setRequired(false)
         )
+        .addStringOption(option =>
+          option
+            .setName('mode')
+            .setDescription('実行モード（毎週/一度だけ/7日集中、デフォルト：毎週）')
+            .setRequired(false)
+            .addChoices(
+              { name: '毎週', value: 'normal' },
+              { name: '一度だけ', value: 'once' },
+              { name: '7日集中型（毎日実行）', value: 'intensive' }
+            )
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
@@ -84,6 +95,7 @@ async function handleAdd(interaction) {
     const day = interaction.options.getString('day');
     const time = interaction.options.getString('time');
     const content = interaction.options.getString('content');
+    const mode = interaction.options.getString('mode') || 'normal';
     const once = interaction.options.getBoolean('once') || false;
 
     // 時間フォーマットチェック
@@ -108,11 +120,24 @@ async function handleAdd(interaction) {
       day,
       time,
       content,
-      once,
+      mode,
+      once: once || (mode === 'once'), // 後方互換性
     });
 
     const dayName = `${day}曜日`;
-    const onceLabel = once ? '（次の週のみ）' : '（毎週）';
+    let modeLabel = '';
+    let modeDescription = '';
+    if (mode === 'intensive') {
+      modeLabel = '7日集中型';
+      modeDescription = '指定曜日から7日間、毎日実行後に削除されます';
+    } else if (mode === 'once' || once) {
+      modeLabel = '一度だけ';
+      modeDescription = '次の指定曜日に1回だけ実行後に削除されます';
+    } else {
+      modeLabel = '毎週';
+      modeDescription = '毎週指定曜日に実行されます';
+    }
+
     const embed = new EmbedBuilder()
       .setColor('#4CAF50')
       .setTitle('✅ リマインダー追加完了')
@@ -121,13 +146,13 @@ async function handleAdd(interaction) {
         { name: '曜日', value: dayName, inline: true },
         { name: '実行時間', value: time, inline: true },
         { name: 'リマインダー', value: content, inline: false },
-        { name: '実行タイプ', value: onceLabel, inline: false }
+        { name: '実行モード', value: modeLabel, inline: false },
+        { name: '説明', value: modeDescription, inline: false }
       )
-      .setFooter({ text: once ? '1回だけ実行後は自動削除されます' : '毎週このタイミングでTODOが追加されます' })
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
-    console.log(`✅ リマインダー追加: ID=${reminder.id}, ${dayName} ${time} - ${content}${once ? ' (一度だけ)' : ''}`);
+    console.log(`✅ リマインダー追加: ID=${reminder.id}, ${dayName} ${time} - ${content} (${modeLabel})`);
 
   } catch (error) {
     console.error('リマインダー追加エラー:', error);
@@ -136,7 +161,7 @@ async function handleAdd(interaction) {
       ephemeral: true
     });
   }
-}}
+}
 
 /**
  * リマインダー一覧表示処理
@@ -176,8 +201,13 @@ async function handleList(interaction) {
       if (dayReminders.length > 0) {
         const reminderList = dayReminders
           .map(r => {
-            const onceLabel = r.once ? ' (1回のみ)' : '';
-            return `🔔 **${r.time}** - ${r.content}${onceLabel} (ID: ${r.id})`;
+            let modeLabel = '';
+            if (r.mode === 'intensive') {
+              modeLabel = ' (7日集中)';
+            } else if (r.mode === 'once' || r.once) {
+              modeLabel = ' (1回のみ)';
+            }
+            return `🔔 **${r.time}** - ${r.content}${modeLabel} (ID: ${r.id})`;
           })
           .join('\n');
         
