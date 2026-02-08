@@ -41,6 +41,7 @@ class ReminderStore {
       day: reminder.day,           // 曜日（月、火、水、木、金、土、日）
       time: reminder.time,         // HH:MM形式
       content: reminder.content,   // リマインダーのテキスト
+      once: reminder.once || false,// 一度だけ実行するか
       createdAt: new Date().toISOString(),
       lastExecuted: null,          // 最後に実行した日時
     };

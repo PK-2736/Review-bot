@@ -39,6 +39,12 @@ module.exports = {
             .setRequired(true)
             .setMaxLength(200)
         )
+        .addBooleanOption(option =>
+          option
+            .setName('once')
+            .setDescription('一度だけ実行するか（指定時のみ実行、デフォルト：毎週）')
+            .setRequired(false)
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
@@ -78,6 +84,7 @@ async function handleAdd(interaction) {
     const day = interaction.options.getString('day');
     const time = interaction.options.getString('time');
     const content = interaction.options.getString('content');
+    const once = interaction.options.getBoolean('once') || false;
 
     // 時間フォーマットチェック
     if (!/^\d{1,2}:\d{2}$/.test(time)) {
@@ -101,9 +108,11 @@ async function handleAdd(interaction) {
       day,
       time,
       content,
+      once,
     });
 
     const dayName = `${day}曜日`;
+    const onceLabel = once ? '（次の週のみ）' : '（毎週）';
     const embed = new EmbedBuilder()
       .setColor('#4CAF50')
       .setTitle('✅ リマインダー追加完了')
@@ -111,13 +120,14 @@ async function handleAdd(interaction) {
         { name: 'ID', value: `${reminder.id}`, inline: true },
         { name: '曜日', value: dayName, inline: true },
         { name: '実行時間', value: time, inline: true },
-        { name: 'リマインダー', value: content, inline: false }
+        { name: 'リマインダー', value: content, inline: false },
+        { name: '実行タイプ', value: onceLabel, inline: false }
       )
-      .setFooter({ text: '毎週このタイミングでTODOが追加されます' })
+      .setFooter({ text: once ? '1回だけ実行後は自動削除されます' : '毎週このタイミングでTODOが追加されます' })
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
-    console.log(`✅ リマインダー追加: ID=${reminder.id}, ${dayName} ${time} - ${content}`);
+    console.log(`✅ リマインダー追加: ID=${reminder.id}, ${dayName} ${time} - ${content}${once ? ' (一度だけ)' : ''}`);
 
   } catch (error) {
     console.error('リマインダー追加エラー:', error);
@@ -126,7 +136,7 @@ async function handleAdd(interaction) {
       ephemeral: true
     });
   }
-}
+}}
 
 /**
  * リマインダー一覧表示処理
@@ -165,7 +175,10 @@ async function handleList(interaction) {
       const dayReminders = grouped[day];
       if (dayReminders.length > 0) {
         const reminderList = dayReminders
-          .map(r => `🔔 **${r.time}** - ${r.content} (ID: ${r.id})`)
+          .map(r => {
+            const onceLabel = r.once ? ' (1回のみ)' : '';
+            return `🔔 **${r.time}** - ${r.content}${onceLabel} (ID: ${r.id})`;
+          })
           .join('\n');
         
         embed.addFields({

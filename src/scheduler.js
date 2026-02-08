@@ -156,15 +156,11 @@ class TodoScheduler {
         dueDate: new Date(),
       });
 
-      // 実行日時を記録
-      ReminderStore.update(reminder.id, {
-        lastExecuted: new Date().toISOString(),
-      });
-
       // Discord チャンネルに通知
       const channel = await this.client.channels.fetch(config.notification.channelId);
       if (channel) {
         const dayName = reminder.day + '曜日';
+        const onceLabel = reminder.once ? '(1回のみ実行)' : '';
         const embed = new EmbedBuilder()
           .setColor('#FF9800')
           .setTitle('🔔 リマインダー実行')
@@ -174,9 +170,21 @@ class TodoScheduler {
             { name: 'リマインダー', value: reminder.content, inline: false }
           )
           .setDescription('📝 TODOリストに追加されました')
+          .setFooter({ text: onceLabel })
           .setTimestamp();
 
         await channel.send({ embeds: [embed] });
+      }
+
+      // once=true の場合は実行後に削除
+      if (reminder.once) {
+        ReminderStore.remove(reminder.id);
+        console.log(`✅ 一度だけリマインダー実行・削除: ID=${reminder.id}, ${reminder.day}曜日 ${reminder.time}`);
+      } else {
+        // 実行日時を記録
+        ReminderStore.update(reminder.id, {
+          lastExecuted: new Date().toISOString(),
+        });
       }
 
       console.log(`✅ リマインダー実行: ID=${reminder.id} - ${reminder.content}`);
