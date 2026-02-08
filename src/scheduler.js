@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const { EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const todoistService = require('./services/todoist');
 const ScheduleStore = require('./services/scheduleStore');
@@ -169,7 +170,12 @@ class TodoScheduler {
         embeds: [embed] 
       });
 
-   
+      const totalTasks = todayTasks.length + overdueTasks.length;
+      console.log(`✅ ${label}のTODO通知を送信しました (積み残し: ${overdueTasks.length}件, 今日: ${todayTasks.length}件, 合計: ${totalTasks}件)`);
+    } catch (error) {
+      console.error(`❌ ${label}のTODO通知送信エラー:`, error);
+    }
+  }
 
   /**
    * 週次レポートを送信
@@ -338,11 +344,6 @@ class TodoScheduler {
     } catch (error) {
       console.error('週次レポート生成エラー:', error);
       throw error;
-    }
-  }   const totalTasks = todayTasks.length + overdueTasks.length;
-      console.log(`✅ ${label}のTODO通知を送信しました (積み残し: ${overdueTasks.length}件, 今日: ${todayTasks.length}件, 合計: ${totalTasks}件)`);
-    } catch (error) {
-      console.error(`❌ ${label}のTODO通知送信エラー:`, error);
     }
   }
 
