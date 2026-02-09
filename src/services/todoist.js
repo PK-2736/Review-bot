@@ -164,10 +164,11 @@ class TodoistService {
       const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
       
-      // 今日が期限のタスク かつ 期限日が1ヶ月以内
+      // 今日が期限のタスク かつ 期限日が1ヶ月以内 かつ 未完了のタスクのみ
       const todayTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.due.date !== today) return false;
+        if (task.isCompleted) return false; // 完了済みタスクを除外
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
         return dueDate >= oneMonthAgo;
@@ -194,10 +195,11 @@ class TodoistService {
       const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
       
-      // 昨日以前が期限のタスク かつ 期限日が1ヶ月以内
+      // 昨日以前が期限のタスク かつ 期限日が1ヶ月以内 かつ 未完了のタスクのみ
       const overdueTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.due.date >= today) return false;
+        if (task.isCompleted) return false; // 完了済みタスクを除外
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
         return dueDate >= oneMonthAgo;
