@@ -135,6 +135,10 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function normalizeTasksResponse(data) {
   if (Array.isArray(data)) return data;
   if (!data) return [];
@@ -316,9 +320,9 @@ class TodoistService {
       const todayTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.isCompleted) return false; // 完了済みタスクを除外
-        if (task.due.date !== today) return false;
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
+        if (formatLocalDate(dueDate) !== today) return false;
         return dueDate >= oneMonthAgo;
       });
 
@@ -347,9 +351,9 @@ class TodoistService {
       const overdueTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.isCompleted) return false; // 完了済みタスクを除外
-        if (task.due.date >= today) return false;
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
+        if (formatLocalDate(dueDate) >= today) return false;
         return dueDate >= oneMonthAgo;
       });
 
@@ -397,6 +401,7 @@ class TodoistService {
       }
 
       cursor = nextCursor;
+      await sleep(200);
     }
 
     return allTasks;
