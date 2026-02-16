@@ -144,6 +144,19 @@ function normalizeTasksResponse(data) {
   return [];
 }
 
+function extractTasksPage(data) {
+  if (Array.isArray(data)) {
+    return { items: data, nextCursor: null };
+  }
+  if (!data || typeof data !== 'object') {
+    return { items: [], nextCursor: null };
+  }
+
+  const items = normalizeTasksResponse(data);
+  const nextCursor = data.next_cursor || data.nextCursor || null;
+  return { items, nextCursor };
+}
+
 class TodoistService {
   constructor() {
     this.api = createTodoistClient(config.todoist.apiToken, config.todoist.apiBaseUrl);
@@ -367,8 +380,26 @@ class TodoistService {
    * @returns {Promise<Array>} タスク配列
    */
   async getAllTasks() {
-    const tasks = await this.api.getTasks();
-    return normalizeTasksResponse(tasks);
+    const pageLimit = 50;
+    let cursor;
+    let allTasks = [];
+
+    while (true) {
+      const response = await this.api.getTasks({ limit: pageLimit, cursor });
+      const { items, nextCursor } = extractTasksPage(response);
+
+      if (items.length > 0) {
+        allTasks = allTasks.concat(items);
+      }
+
+      if (!nextCursor) {
+        break;
+      }
+
+      cursor = nextCursor;
+    }
+
+    return allTasks;
   }
 }
 
