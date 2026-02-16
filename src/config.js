@@ -7,6 +7,7 @@ module.exports = {
   },
   todoist: {
     apiToken: process.env.TODOIST_API_TOKEN,
+    apiBaseUrl: process.env.TODOIST_API_BASE_URL,
   },
   review: {
     defaultProjectName: process.env.DEFAULT_PROJECT_NAME || '復習タスク',

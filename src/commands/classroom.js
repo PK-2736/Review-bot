@@ -67,11 +67,10 @@ async function handleList(interaction) {
     const now = new Date();
     const daysFromNow = config.classroom.dueWithinDays || 7;
     const limitDate = new Date(now.getTime() + daysFromNow * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const urgent = sorted.filter(t => {
       const dueDate = new Date(t.dueKey);
-      return dueDate > sevenDaysAgo && dueDate <= now;
+      return dueDate <= now;
     });
 
     const upcoming = sorted.filter(t => {

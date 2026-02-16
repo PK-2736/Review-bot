@@ -1,5 +1,124 @@
-const { TodoistApi } = require('@doist/todoist-api-typescript');
 const config = require('../config');
+
+const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
+
+function normalizeBaseUrl(value) {
+  if (!value) return DEFAULT_API_BASE_URL;
+  return value.trim().replace(/\/+$/, '');
+}
+
+function mapPayloadForApi(payload) {
+  if (!payload) return undefined;
+  const mapped = { ...payload };
+
+  if ('projectId' in mapped) {
+    mapped.project_id = mapped.projectId;
+    delete mapped.projectId;
+  }
+
+  if ('sectionId' in mapped) {
+    mapped.section_id = mapped.sectionId;
+    delete mapped.sectionId;
+  }
+
+  if ('parentId' in mapped) {
+    mapped.parent_id = mapped.parentId;
+    delete mapped.parentId;
+  }
+
+  if ('assigneeId' in mapped) {
+    mapped.assignee_id = mapped.assigneeId;
+    delete mapped.assigneeId;
+  }
+
+  if ('assignerId' in mapped) {
+    mapped.assigner_id = mapped.assignerId;
+    delete mapped.assignerId;
+  }
+
+  if ('dueDate' in mapped) {
+    mapped.due_date = mapped.dueDate;
+    delete mapped.dueDate;
+  }
+
+  if ('dueDatetime' in mapped) {
+    mapped.due_datetime = mapped.dueDatetime;
+    delete mapped.dueDatetime;
+  }
+
+  if ('dueTimezone' in mapped) {
+    mapped.due_timezone = mapped.dueTimezone;
+    delete mapped.dueTimezone;
+  }
+
+  return mapped;
+}
+
+function mapParamsForApi(params) {
+  if (!params) return undefined;
+  return mapPayloadForApi(params);
+}
+
+async function parseResponse(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return text;
+  }
+}
+
+function createTodoistClient(token, baseUrl) {
+  const base = normalizeBaseUrl(baseUrl);
+
+  async function request(method, path, payload, params) {
+    const url = new URL(path.replace(/^\/+/, ''), `${base}/`);
+
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (Array.isArray(value)) {
+          url.searchParams.set(key, value.join(','));
+          return;
+        }
+        url.searchParams.set(key, String(value));
+      });
+    }
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    const options = { method, headers };
+    if (payload) {
+      options.body = JSON.stringify(payload);
+    }
+
+    const response = await fetch(url.toString(), options);
+    const data = await parseResponse(response);
+
+    if (!response.ok) {
+      const error = new Error('Todoist API request failed');
+      error.httpStatusCode = response.status;
+      error.responseData = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  return {
+    getProjects: () => request('GET', 'projects'),
+    addProject: (payload) => request('POST', 'projects', mapPayloadForApi(payload)),
+    getTasks: (params) => request('GET', 'tasks', undefined, mapParamsForApi(params)),
+    addTask: (payload) => request('POST', 'tasks', mapPayloadForApi(payload)),
+    updateTask: (id, payload) => request('POST', `tasks/${id}`, mapPayloadForApi(payload)),
+    closeTask: (id) => request('POST', `tasks/${id}/close`),
+  };
+}
 
 function getTaskDueDate(task) {
   if (!task || !task.due) return null;
@@ -11,7 +130,7 @@ function getTaskDueDate(task) {
 
 class TodoistService {
   constructor() {
-    this.api = new TodoistApi(config.todoist.apiToken);
+    this.api = createTodoistClient(config.todoist.apiToken, config.todoist.apiBaseUrl);
     this.projectId = null;
     this.projectCache = new Map();
   }
