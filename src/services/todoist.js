@@ -149,6 +149,15 @@ function normalizeTasksResponse(data) {
   return [];
 }
 
+function normalizeProjectsResponse(data) {
+  if (Array.isArray(data)) return data;
+  if (!data) return [];
+  if (Array.isArray(data.projects)) return data.projects;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
+}
+
 function extractTasksPage(data) {
   if (Array.isArray(data)) {
     return { items: data, nextCursor: null };
@@ -190,7 +199,8 @@ class TodoistService {
     }
 
     try {
-      const projects = await this.api.getProjects();
+      const projectsResponse = await this.api.getProjects();
+      const projects = normalizeProjectsResponse(projectsResponse);
       const reviewProject = projects.find(
         (p) => p.name === projectName
       );
