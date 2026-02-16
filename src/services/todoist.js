@@ -1,6 +1,7 @@
 const config = require('../config');
 
 const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
+const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
 function normalizeBaseUrl(value) {
   if (!value) return DEFAULT_API_BASE_URL;
@@ -326,6 +327,13 @@ class TodoistService {
         return dueDate >= oneMonthAgo;
       });
 
+      if (DEBUG_TODOIST) {
+        const sample = tasks.find(task => task && task.due);
+        console.log('Todoist debug: total tasks', tasks.length);
+        console.log('Todoist debug: today', today, 'sample due', sample ? sample.due : null);
+        console.log('Todoist debug: today tasks', todayTasks.length);
+      }
+
       // 優先度でソート（高優先度が先）
       return todayTasks.sort((a, b) => b.priority - a.priority);
     } catch (error) {
@@ -356,6 +364,10 @@ class TodoistService {
         if (formatLocalDate(dueDate) >= today) return false;
         return dueDate >= oneMonthAgo;
       });
+
+      if (DEBUG_TODOIST) {
+        console.log('Todoist debug: overdue tasks', overdueTasks.length);
+      }
 
       // 優先度でソート（高優先度が先）
       return overdueTasks.sort((a, b) => b.priority - a.priority);
@@ -391,6 +403,10 @@ class TodoistService {
     while (true) {
       const response = await this.api.getTasks({ limit: pageLimit, cursor });
       const { items, nextCursor } = extractTasksPage(response);
+
+      if (DEBUG_TODOIST) {
+        console.log('Todoist debug: page size', items.length, 'nextCursor', nextCursor ? 'yes' : 'no');
+      }
 
       if (items.length > 0) {
         allTasks = allTasks.concat(items);
