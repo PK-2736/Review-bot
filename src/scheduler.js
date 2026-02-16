@@ -439,7 +439,7 @@ class TodoScheduler {
       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
       // タスク情報を取得
-      const allTasks = await todoistService.api.getTasks();
+      const allTasks = await todoistService.getAllTasks();
       
       let completedCount = 0;
       let pendingTasks = [];

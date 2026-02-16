@@ -128,6 +128,15 @@ function getTaskDueDate(task) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeTasksResponse(data) {
+  if (Array.isArray(data)) return data;
+  if (!data) return [];
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.tasks)) return data.tasks;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
+}
+
 class TodoistService {
   constructor() {
     this.api = createTodoistClient(config.todoist.apiToken, config.todoist.apiBaseUrl);
@@ -275,7 +284,7 @@ class TodoistService {
    */
   async getTodayTasks() {
     try {
-      const tasks = await this.api.getTasks();
+      const tasks = await this.getAllTasks();
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       
@@ -307,7 +316,7 @@ class TodoistService {
    */
   async getOverdueTasks() {
     try {
-      const tasks = await this.api.getTasks();
+      const tasks = await this.getAllTasks();
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       
@@ -344,6 +353,15 @@ class TodoistService {
       console.error('タスク完了エラー:', error);
       throw error;
     }
+  }
+
+  /**
+   * Todoistのタスク一覧を配列で取得
+   * @returns {Promise<Array>} タスク配列
+   */
+  async getAllTasks() {
+    const tasks = await this.api.getTasks();
+    return normalizeTasksResponse(tasks);
   }
 }
 
