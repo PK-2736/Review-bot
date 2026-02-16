@@ -122,9 +122,21 @@ function createTodoistClient(token, baseUrl) {
 }
 
 function getTaskDueDate(task) {
-  if (!task || !task.due) return null;
-  const raw = task.due.datetime || task.due.date;
+  if (!task) return null;
+  const due = task.due || {};
+  const raw = due.datetime || due.date || task.due_datetime || task.due_date;
   if (!raw) return null;
+  return parseDueDate(raw);
+}
+
+function parseDueDate(raw) {
+  if (typeof raw !== 'string') return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  }
+
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -146,6 +158,7 @@ function normalizeTasksResponse(data) {
   if (Array.isArray(data.items)) return data.items;
   if (Array.isArray(data.tasks)) return data.tasks;
   if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.results)) return data.results;
   return [];
 }
 
@@ -155,6 +168,7 @@ function normalizeProjectsResponse(data) {
   if (Array.isArray(data.projects)) return data.projects;
   if (Array.isArray(data.items)) return data.items;
   if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.results)) return data.results;
   return [];
 }
 
