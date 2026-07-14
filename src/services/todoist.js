@@ -118,6 +118,7 @@ function createTodoistClient(token, baseUrl) {
     addTask: (payload) => request('POST', 'tasks', mapPayloadForApi(payload)),
     updateTask: (id, payload) => request('POST', `tasks/${id}`, mapPayloadForApi(payload)),
     closeTask: (id) => request('POST', `tasks/${id}/close`),
+    deleteTask: (id) => request('DELETE', `tasks/${id}`),
   };
 }
 
@@ -411,6 +412,48 @@ class TodoistService {
       return true;
     } catch (error) {
       console.error('タスク完了エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 指定日数以上前の復習タスクを削除
+   * @param {number} olderThanDays - 何日以上前を削除対象にするか
+   * @returns {Promise<{deleted: number, failed: number}>}
+   */
+  async deleteOldReviewTasks(olderThanDays = 2) {
+    try {
+      const tasks = await this.getAllTasks();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - olderThanDays);
+      const cutoffStr = formatLocalDate(cutoff);
+
+      let deleted = 0;
+      let failed = 0;
+
+      const targets = tasks.filter(task => {
+        if (task.isCompleted) return false;
+        if (!task.labels || !task.labels.includes('復習')) return false;
+
+        const dueDate = getTaskDueDate(task);
+        if (!dueDate) return false;
+
+        return formatLocalDate(dueDate) <= cutoffStr;
+      });
+
+      for (const task of targets) {
+        try {
+          await this.api.deleteTask(task.id);
+          deleted++;
+        } catch (error) {
+          failed++;
+          console.error(`復習タスク削除失敗 (${task.id}):`, error);
+        }
+      }
+
+      return { deleted, failed };
+    } catch (error) {
+      console.error('古い復習タスク削除エラー:', error);
       throw error;
     }
   }

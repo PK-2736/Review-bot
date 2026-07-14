@@ -57,6 +57,10 @@ class TodoScheduler {
     // Google Classroom 同期
     this.startClassroomSync();
 
+    // 古い復習タスクの自動削除
+    this.startOldReviewCleanup();
+    this.cleanupOldReviewTasks();
+
     console.log('✅ スケジューラーが起動しました');
   }
 
@@ -109,6 +113,34 @@ class TodoScheduler {
 
     this.jobs.push(classroomJob);
     console.log(`🎓 Classroom同期を設定しました: ${config.classroom.syncTime}`);
+  }
+
+  /**
+   * 古い復習タスクの自動削除を開始
+   */
+  startOldReviewCleanup() {
+    // 毎日03:10に、2日以上前の復習タスクを削除
+    const cleanupJob = cron.schedule('10 3 * * *', async () => {
+      await this.cleanupOldReviewTasks();
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Tokyo'
+    });
+
+    this.jobs.push(cleanupJob);
+    console.log('🧹 古い復習タスク自動削除を設定しました: 10 3 * * *');
+  }
+
+  /**
+   * 2日以上前の復習タスクを削除
+   */
+  async cleanupOldReviewTasks() {
+    try {
+      const result = await todoistService.deleteOldReviewTasks(2);
+      console.log(`🧹 古い復習タスク削除完了 (削除: ${result.deleted}, 失敗: ${result.failed})`);
+    } catch (error) {
+      console.error('古い復習タスク削除エラー:', error);
+    }
   }
 
   /**
