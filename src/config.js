@@ -11,9 +11,9 @@ module.exports = {
   },
   review: {
     defaultProjectName: process.env.DEFAULT_PROJECT_NAME || '復習タスク',
-    // 復習間隔（日数）- エビングハウスの忘却曲線に基づく
+    // 復習間隔（日数）
     intervals: {
-      normal: [1, 3, 7, 14, 30],           // 通常モード（5回）
+      normal: [1, 7, 30],                  // 通常モード（次の日・1週間後・1ヵ月後）
       mastery: [1, 3, 7, 14, 30, 60, 90, 180], // 完全習得モード（8回、半年まで）
     },
   },

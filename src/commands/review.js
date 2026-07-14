@@ -22,7 +22,7 @@ module.exports = {
       const tasks = await todoistService.createReviewSeries(content);
       
       if (tasks.length > 0) {
-        const intervals = config.review.intervals;
+        const intervals = config.review.intervals.normal;
         let responseMessage = `✅ **${content}** の復習タスクを作成しました！\n\n`;
         responseMessage += '📅 復習スケジュール:\n';
         
