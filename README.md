@@ -16,6 +16,7 @@ Review-botは、Discordから学習内容を登録すると、科学的な復習
 - 🔔 スラッシュコマンドで手動でTODOリストを確認可能
 - 🔄 毎週決まった時間にリマインダーとしてTODOを自動追加
 - 🎓 Google Classroom の課題を Todoist に自動同期（期限が近い課題のみ）
+- 🖊️ reMarkable の勉強ノートをOCR＋Geminiで解析し、復習タスクを自動生成（詳細は [remarkablepaper-review.md](remarkablepaper-review.md)）
 
 ## セットアップ
 
@@ -240,6 +241,34 @@ Google Classroom の課題を Todoist に自動同期できます（期限が近
 - `CLASSROOM_SYNC_TIME` で実行時刻を指定（デフォルト 毎日7:00）
 - `CLASSROOM_DUE_WITHIN_DAYS` で取り込み対象の日数を指定（デフォルト 7日以内）
 
+### reMarkable ノートから復習を自動生成
+
+reMarkable に書いた勉強ノートを OCR（Google Vision）＋ AI（Gemini）で解析し、教科ごとに最適な復習タスクを Todoist へ自動登録します。仕様の詳細は [remarkablepaper-review.md](remarkablepaper-review.md) を参照してください。
+
+**今すぐ同期（管理者のみ）：**
+
+```
+/remarkable sync
+```
+
+今日更新されたノートを解析し、結果を表示します。
+
+**解析履歴を確認：**
+
+```
+/remarkable list
+```
+
+**同期設定（`.env`）：**
+- `REMARKABLE_ENABLED=true` で有効化
+- `REMARKABLE_SYNC_TIME` で自動実行時刻を指定（デフォルト 毎日22:00）
+- `REMARKABLE_MCP_URL` / `REMARKABLE_MCP_TOKEN`（remarkable-mcp）
+- `GEMINI_API_KEY` / `GEMINI_MODEL`（AI解析）
+
+> reMarkable の取得・OCR（Google Vision）は MCP サーバー側で完了するため、bot 側は OCR 済みテキストを受け取るだけです（`GOOGLE_VISION_API_KEY` は bot 側では不要）。
+
+有効化すると毎日22:00に自動同期され、新規登録があれば通知チャンネルに報告されます。
+
 ## ワークフロー例
 
 ### Google Classroom を使っている場合
@@ -325,13 +354,19 @@ Review-bot/
 │   │   ├── done.js                 # タスク完了
 │   │   ├── schedule.js             # 授業スケジュール管理
 │   │   ├── reminder.js             # 週間リマインダー管理
-│   │   └── classroom.js            # Google Classroom 同期
+│   │   ├── classroom.js            # Google Classroom 同期
+│   │   └── remarkable.js           # reMarkable 復習同期
 │   └── services/
 │       ├── todoist.js             # Todoist API クライアント
 │       ├── classroomService.js    # Google Classroom API クライアント  
 │       ├── classroomTaskStore.js  # Classroom タスク重複管理
 │       ├── reminderStore.js       # リマインダー管理
-│       └── scheduleStore.js       # スケジュール伝管理
+│       ├── scheduleStore.js       # スケジュール伝管理
+│       ├── remarkableService.js   # reMarkable 同期オーケストレーション
+│       ├── remarkableMcp.js       # remarkable-mcp クライアント
+│       ├── visionService.js       # Google Vision OCR クライアント
+│       ├── geminiService.js       # Gemini API クライアント
+│       └── remarkableCacheStore.js # 解析済みページの記録
 ├── data/                         # データストア (自動作成)
 ├── .env.example                # 環境変数テンプレート
 ├── .gitignore

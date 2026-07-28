@@ -57,4 +57,20 @@ module.exports = {
     channelId: '1468960514238582878',  // メッセージを受け取るチャンネルID
     userId: '726195003780628621',      // 対象ユーザーID
   },
+  remarkable: {
+    // reMarkable ノートの自動復習化
+    enabled: process.env.REMARKABLE_ENABLED === 'true',
+    syncTime: process.env.REMARKABLE_SYNC_TIME || '0 22 * * *', // 毎日22:00
+    timezone: process.env.REMARKABLE_TIMEZONE || 'Asia/Tokyo',
+    projectPrefix: process.env.REMARKABLE_PROJECT_PREFIX || '', // Todoistプロジェクト名の接頭辞
+    mcp: {
+      // MCP側で reMarkable 認証・データ取得・Google Vision OCR まで実施し、OCR済みテキストを返す
+      url: process.env.REMARKABLE_MCP_URL || 'https://mcp.recrubo.net',
+      token: process.env.REMARKABLE_MCP_TOKEN,
+    },
+    gemini: {
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+    },
+  },
 };

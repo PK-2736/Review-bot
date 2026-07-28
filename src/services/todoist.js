@@ -286,6 +286,33 @@ class TodoistService {
   }
 
   /**
+   * reMarkable 復習タスクを作成
+   * ノート名（教科名）ごとにプロジェクトを分け、Gemini が決めた期限・優先度で登録する。
+   * @param {Object} payload
+   * @param {string} payload.projectName - プロジェクト名（教科名）
+   * @param {string} payload.content - タスク内容
+   * @param {Date} payload.dueDate - 期限日
+   * @param {number} [payload.priority=1] - 優先度（1-4, 4が最優先=P1）
+   */
+  async createRemarkableTask(payload) {
+    try {
+      const projectId = await this.getOrCreateProjectByName(payload.projectName);
+      const task = await this.api.addTask({
+        content: payload.content,
+        projectId,
+        dueDate: payload.dueDate.toISOString().split('T')[0],
+        priority: payload.priority || 1,
+        labels: ['復習', 'reMarkable'],
+      });
+
+      return task;
+    } catch (error) {
+      console.error('Todoist reMarkable タスク作成エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
    * タスクを更新
    * @param {string} taskId
    * @param {Object} payload
