@@ -130,6 +130,14 @@ jobs:
             echo "CLASSROOM_ENABLED=${{ secrets.CLASSROOM_ENABLED || 'false' }}" >> .env
             echo "CLASSROOM_SYNC_TIME=${{ secrets.CLASSROOM_SYNC_TIME || '0 7 * * *' }}" >> .env
             echo "CLASSROOM_DUE_WITHIN_DAYS=${{ secrets.CLASSROOM_DUE_WITHIN_DAYS || '7' }}" >> .env
+            echo "REMARKABLE_ENABLED=${{ secrets.REMARKABLE_ENABLED || 'false' }}" >> .env
+            echo "REMARKABLE_SYNC_TIME=${{ secrets.REMARKABLE_SYNC_TIME || '0 22 * * *' }}" >> .env
+            echo "REMARKABLE_TIMEZONE=${{ secrets.REMARKABLE_TIMEZONE || 'Asia/Tokyo' }}" >> .env
+            echo "REMARKABLE_PROJECT_PREFIX=${{ secrets.REMARKABLE_PROJECT_PREFIX || '' }}" >> .env
+            echo "REMARKABLE_MCP_URL=${{ secrets.REMARKABLE_MCP_URL || 'https://mcp.recrubo.net' }}" >> .env
+            echo "REMARKABLE_MCP_TOKEN=${{ secrets.REMARKABLE_MCP_TOKEN || '' }}" >> .env
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY || '' }}" >> .env
+            echo "GEMINI_MODEL=${{ secrets.GEMINI_MODEL || 'gemini-1.5-flash' }}" >> .env
             echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
             echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
             echo "GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" >> .env
