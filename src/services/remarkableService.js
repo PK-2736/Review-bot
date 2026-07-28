@@ -64,10 +64,7 @@ class RemarkableService {
 
     for (const document of documents) {
       const key = document.id;
-      if (RemarkableCacheStore.has(key)) {
-        summary.skipped += 1;
-        continue;
-      }
+      console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
 
       try {
         const text = await this.getDocumentText(document);
