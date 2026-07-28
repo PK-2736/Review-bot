@@ -299,6 +299,7 @@ class TodoistService {
       const projectId = await this.getOrCreateProjectByName(payload.projectName);
       const task = await this.api.addTask({
         content: payload.content,
+        description: payload.description,
         projectId,
         dueDate: payload.dueDate.toISOString().split('T')[0],
         priority: payload.priority || 1,

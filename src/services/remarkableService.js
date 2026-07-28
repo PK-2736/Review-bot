@@ -2,6 +2,9 @@ const config = require('../config');
 const remarkableMcp = require('./remarkableMcp');
 const geminiService = require('./geminiService');
 const RemarkableCacheStore = require('./remarkableCacheStore');
+const RemarkablePageCacheStore = require('./remarkablePageCacheStore');
+const remarkablePageSyncService = require('./remarkablePageSyncService');
+const { formatPageRange } = require('./remarkableCacheUtils');
 const todoistService = require('./todoist');
 
 const DEBUG = process.env.DEBUG_REMARKABLE === 'true';
@@ -41,7 +44,17 @@ class RemarkableService {
    * @returns {Promise<{created:number, skipped:number, notebooks:number, notebookNames:string[], errors:string[]}>}
    */
   async syncTodayReviews() {
-    const summary = { created: 0, skipped: 0, notebooks: 0, notebookNames: [], errors: [] };
+    const summary = {
+      created: 0,
+      skipped: 0,
+      notebooks: 0,
+      notebookNames: [],
+      errors: [],
+      changedPages: 0,
+      skippedPages: 0,
+      todoistCreated: 0,
+      geminiRequests: 0,
+    };
 
     if (!this.isConfigured()) {
       throw new Error(`必要な設定が不足しています: ${this.missingConfig().join(', ')}`);
@@ -59,6 +72,10 @@ class RemarkableService {
       return summary;
     }
 
+    if (!RemarkablePageCacheStore.hasCacheFile()) {
+      throw new Error('ページキャッシュが存在しません。/cache コマンドで初期化してください。');
+    }
+
     const groups = [];
     const processedKeys = [];
 
@@ -67,18 +84,30 @@ class RemarkableService {
       console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
 
       try {
-        const text = await this.getDocumentText(document);
-        console.log('🖊️ reMarkable sync: OCR total length =', text.length, 'document=', document.name);
+        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, 1);
+        summary.changedPages += result.changedPages.length;
+        summary.skippedPages += result.skippedPages;
 
-        if (text) {
+        if (result.changedPages.length > 0) {
           groups.push({
             name: document.name,
-            pages: [{ key, label: document.name, text }],
+            pages: result.changedPages.map(pageData => ({
+              key: `${key}:${pageData.page}`,
+              document: document.name,
+              page: pageData.page,
+              label: String(pageData.page),
+              content: pageData.content,
+              text: pageData.content,
+            })),
           });
-          processedKeys.push({ key, notebook: document.name, page: 'document' });
-        } else {
-          console.warn(`⚠️ reMarkable sync: empty OCR text for document=${document.name}`);
-          processedKeys.push({ key, notebook: document.name, page: 'document', empty: true });
+
+          for (const pageData of result.changedPages) {
+            processedKeys.push({
+              key: `${key}:${pageData.page}`,
+              notebook: document.name,
+              page: String(pageData.page),
+            });
+          }
         }
       } catch (error) {
         console.error(`ドキュメント取得失敗 (${document.name}):`, error.message);
@@ -86,7 +115,14 @@ class RemarkableService {
       }
     }
 
+    RemarkablePageCacheStore.save();
+    console.log('🖊️ reMarkable sync: Changed pages=', summary.changedPages);
+    console.log('🖊️ reMarkable sync: Skipped pages=', summary.skippedPages);
     console.log('🖊️ reMarkable sync: groups count=', groups.length);
+
+    summary.skipped = summary.skippedPages;
+    summary.geminiRequests = groups.length;
+
     if (groups.length === 0) {
       this.commitCache(processedKeys);
       return summary;
@@ -96,6 +132,7 @@ class RemarkableService {
     if (DEBUG) console.log('reMarkable debug: groupedText\n', groupedText.slice(0, 1000));
 
     const plan = await geminiService.generateReviewPlan(groupedText);
+    summary.geminiRequests = groups.length;
 
     const today = new Date();
 
@@ -107,14 +144,20 @@ class RemarkableService {
         const dueDate = new Date(today);
         dueDate.setDate(today.getDate() + task.due_days);
 
+        const pageNumbers = groups.find(g => g.name === notebook.name)?.pages.map(p => Number(p.page)) || [];
+        const pageRange = formatPageRange(pageNumbers);
+        const description = `${notebook.name}\n${pageRange ? `${pageRange}\n\n` : ''}${task.title}`;
+
         try {
           await todoistService.createRemarkableTask({
             projectName,
             content: task.title,
+            description,
             dueDate,
             priority: task.priority,
           });
           summary.created += 1;
+          summary.todoistCreated += 1;
         } catch (error) {
           console.error(`Todoist登録失敗 (${notebook.name} / ${task.title}):`, error.message);
           summary.errors.push(`Todoist: ${notebook.name} - ${error.message}`);
@@ -126,6 +169,7 @@ class RemarkableService {
 
     this.commitCache(processedKeys);
 
+    console.log(summary);
     return summary;
   }
 
@@ -143,92 +187,8 @@ class RemarkableService {
       .join('\n\n----------------------\n\n');
   }
 
-  async getDocumentText(document) {
-    const pages = [];
-    let page = 1;
-
-    while (true) {
-      const readArgs = { document: document.name, include_ocr: true };
-      if (page > 1) {
-        readArgs.page = page;
-      }
-
-      console.log('🖊️ reMarkable sync: remarkable_read args', readArgs);
-      const readResult = await remarkableMcp.read(readArgs);
-      try {
-        console.log('🖊️ reMarkable sync: remarkable_read RAW:', JSON.stringify(readResult, null, 2));
-      } catch (error) {
-        console.dir(readResult, { depth: null });
-      }
-
-      const parsed = this.parseReadResult(readResult);
-      console.log('🖊️ reMarkable sync: remarkable_read result', {
-        hasText: typeof readResult.text === 'string',
-        hasJson: typeof readResult.json === 'object',
-        hasResult: typeof readResult.json?.result === 'string',
-        hasParsedContent: typeof parsed.content === 'string',
-        hasParsedText: typeof parsed.text === 'string',
-        more: parsed.more,
-        images: readResult.images?.length || 0,
-      });
-
-      let text = '';
-      if (typeof readResult.text === 'string' && readResult.text.trim() !== '') {
-        text = readResult.text.trim();
-      } else if (readResult.json && typeof readResult.json.text === 'string' && readResult.json.text.trim() !== '') {
-        text = readResult.json.text.trim();
-      } else if (parsed.content) {
-        text = parsed.content;
-      } else if (parsed.text) {
-        text = parsed.text;
-      }
-
-      if (text) {
-        pages.push(text);
-      }
-
-      if (!parsed.more) {
-        break;
-      }
-
-      page += 1;
-    }
-
-    return pages.filter(Boolean).join('\n\n');
-  }
-
-  parseReadResult(readResult) {
-    const result = { text: '', content: '', more: false };
-    if (!readResult) return result;
-
-    if (typeof readResult.text === 'string' && readResult.text.trim() !== '') {
-      result.text = readResult.text.trim();
-    }
-
-    if (readResult.json && typeof readResult.json.text === 'string' && readResult.json.text.trim() !== '') {
-      result.text = result.text || readResult.json.text.trim();
-    }
-
-    if (readResult.json && typeof readResult.json.result === 'string') {
-      try {
-        const parsed = JSON.parse(readResult.json.result);
-        if (parsed && typeof parsed === 'object') {
-          if (typeof parsed.content === 'string' && parsed.content.trim() !== '') {
-            result.content = parsed.content.trim();
-          }
-          if (typeof parsed.text === 'string' && parsed.text.trim() !== '') {
-            result.text = result.text || parsed.text.trim();
-          }
-          if (parsed.more === true) {
-            result.more = true;
-          }
-        }
-      } catch (error) {
-        if (DEBUG) console.log('reMarkable debug: parse readResult.json.result failed', error.message);
-      }
-    }
-
-    return result;
+  async getChangedPagesForDocument(document) {
+    return remarkablePageSyncService.getChangedPagesForDocument(document.path, 1);
   }
 
   /**

@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const remarkableService = require('../services/remarkableService');
+const RemarkablePageSyncService = require('../services/remarkablePageSyncService');
 const RemarkableCacheStore = require('../services/remarkableCacheStore');
+const RemarkablePageCacheStore = require('../services/remarkablePageCacheStore');
+const remarkableMcp = require('../services/remarkableMcp');
 const config = require('../config');
 
 module.exports = {
@@ -16,6 +19,24 @@ module.exports = {
       subcommand
         .setName('list')
         .setDescription('直近で解析したノート・ページを表示します')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('cache')
+        .setDescription('ページキャッシュを初期化します。先頭ページ以降を /cache します。')
+        .addStringOption(option =>
+          option
+            .setName('document')
+            .setDescription('初期化する reMarkable ドキュメントのパス')
+            .setRequired(true)
+        )
+        .addIntegerOption(option =>
+          option
+            .setName('page')
+            .setDescription('初期化を開始するページ番号（1以上）')
+            .setRequired(true)
+            .setMinValue(1)
+        )
     ),
 
   async execute(interaction) {
@@ -25,6 +46,8 @@ module.exports = {
       await handleSync(interaction);
     } else if (subcommand === 'list') {
       await handleList(interaction);
+    } else if (subcommand === 'cache') {
+      await handleCache(interaction);
     }
   },
 };
@@ -106,6 +129,55 @@ async function handleSync(interaction) {
   } catch (error) {
     console.error('reMarkable同期エラー:', error);
     const message = `❌ reMarkable の同期に失敗しました。\n\`\`\`\n${error.message}\n\`\`\``;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: message });
+    } else {
+      await interaction.reply({ content: message, ephemeral: true });
+    }
+  }
+}
+
+/**
+ * ページキャッシュを初期化
+ */
+async function handleCache(interaction) {
+  try {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return await interaction.reply({
+        content: '❌ このコマンドは管理者のみが実行できます。',
+        ephemeral: true,
+      });
+    }
+
+    if (!remarkableMcp.isConfigured()) {
+      return await interaction.reply({
+        content: '❌ 設定が不足しています: REMARKABLE_MCP_URL',
+        ephemeral: true,
+      });
+    }
+
+    const documentPath = interaction.options.getString('document');
+    const page = interaction.options.getInteger('page');
+
+    await interaction.deferReply();
+
+    const result = await RemarkablePageSyncService.initializeCacheForDocument(documentPath, page);
+
+    const embed = new EmbedBuilder()
+      .setColor('#FF9800')
+      .setTitle('🗂️ reMarkable ページキャッシュ初期化完了')
+      .setDescription(`ドキュメント: ${documentPath}`)
+      .addFields(
+        { name: '📄 開始ページ', value: String(page), inline: true },
+        { name: '✅ 登録ページ', value: `${result.registeredPages}件`, inline: true },
+        { name: '🔁 変更ページ', value: `${result.changedPages.length}件`, inline: true }
+      )
+      .setTimestamp();
+
+    return await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('reMarkable cache 初期化エラー:', error);
+    const message = `❌ ページキャッシュの初期化に失敗しました。\n\`\`\`\n${error.message}\n\`\`\``;
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: message });
     } else {
