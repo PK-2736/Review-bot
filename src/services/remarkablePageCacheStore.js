@@ -21,7 +21,7 @@ class RemarkablePageCacheStore {
     }
 
     if (!fs.existsSync(CACHE_FILE)) {
-      this.cache = {};
+      this.cache = { documents: {} };
       if (createIfMissing) {
         this.save();
         console.log('Remarkable page cache created at', CACHE_FILE);
@@ -33,11 +33,20 @@ class RemarkablePageCacheStore {
 
     try {
       const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
-      this.cache = raw.trim() ? JSON.parse(raw) : {};
+      this.cache = raw.trim() ? JSON.parse(raw) : { documents: {} };
     } catch (error) {
       console.warn('Remarkable page cache corrupted. Reinitializing cache.', error.message);
-      this.cache = {};
+      this.cache = { documents: {} };
       this.save();
+    }
+
+    if (!this.cache.documents || typeof this.cache.documents !== 'object') {
+      const legacyCache = { ...this.cache };
+      this.cache = { documents: {} };
+      for (const [key, value] of Object.entries(legacyCache)) {
+        if (key === 'documents') continue;
+        this.cache.documents[key] = value;
+      }
     }
 
     return this.cache;
@@ -60,48 +69,57 @@ class RemarkablePageCacheStore {
     return String(documentPath).trim().replace(/^\/+/, '').replace(/\/+$/, '');
   }
 
-  static getPageEntry(documentPath, page) {
+  static getDocumentCache(documentPath, createIfMissing = false) {
     const cache = this.load();
     const key = this.normalizeDocumentPath(documentPath);
-    const pageKey = String(page);
-    if (!cache[key] || cache[key][pageKey] == null) {
-      return null;
+    if (!cache.documents[key]) {
+      if (!createIfMissing) {
+        return null;
+      }
+      cache.documents[key] = { baseline: 0, pages: {} };
     }
-    return cache[key][pageKey];
+    if (!cache.documents[key].pages || typeof cache.documents[key].pages !== 'object') {
+      cache.documents[key].pages = {};
+    }
+    return cache.documents[key];
   }
 
-  static setPageEntry(documentPath, page, hash, updatedAt) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) {
-      cache[key] = {};
+  static getPageEntry(documentPath, page) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) {
+      return null;
     }
-    cache[key][String(page)] = { hash, updatedAt };
+    const pageKey = String(page);
+    return documentCache.pages[pageKey] || null;
+  }
+
+  static setPageEntry(documentPath, page, hash, normalizedHash, updatedAt) {
+    const documentCache = this.getDocumentCache(documentPath, true);
+    const pageKey = String(page);
+    documentCache.pages[pageKey] = {
+      hash,
+      normalizedHash,
+      updatedAt,
+    };
   }
 
   static setDocumentBaseline(documentPath, page) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) {
-      cache[key] = {};
-    }
-    cache[key]._cachedTo = Number(page);
+    const documentCache = this.getDocumentCache(documentPath, true);
+    documentCache.baseline = Number(page);
   }
 
   static getDocumentBaseline(documentPath) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) {
       return 0;
     }
 
-    const explicitBaseline = cache[key]._cachedTo;
+    const explicitBaseline = documentCache.baseline;
     if (explicitBaseline != null && Number.isFinite(Number(explicitBaseline)) && Number(explicitBaseline) > 0) {
       return Number(explicitBaseline);
     }
 
-    const pageNumbers = Object.keys(cache[key])
-      .filter(page => !page.startsWith('_'))
+    const pageNumbers = Object.keys(documentCache.pages || {})
       .map(page => Number(String(page).trim()))
       .filter(page => Number.isFinite(page));
 
@@ -111,58 +129,52 @@ class RemarkablePageCacheStore {
 
     const maxPage = Math.max(...pageNumbers);
     if (process.env.DEBUG_REMARKABLE === 'true') {
-      console.log('RemarkablePageCacheStore.getDocumentBaseline', { key, explicitBaseline, pageNumbers, maxPage });
+      console.log('RemarkablePageCacheStore.getDocumentBaseline', { documentPath, explicitBaseline, pageNumbers, maxPage });
     }
 
     return maxPage;
   }
 
   static deletePageEntry(documentPath, page) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) return;
-    delete cache[key][String(page)];
-    if (Object.keys(cache[key]).length === 0) {
-      delete cache[key];
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return;
+    delete documentCache.pages[String(page)];
+    if (Object.keys(documentCache.pages).length === 0 && (!documentCache.baseline || documentCache.baseline === 0)) {
+      delete this.load().documents[this.normalizeDocumentPath(documentPath)];
     }
   }
 
   static removeStalePages(documentPath, keepPages = []) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) return;
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return;
     const keepSet = new Set((keepPages || []).map(p => String(p)));
-    for (const p of Object.keys(cache[key])) {
-      if (p.startsWith('_')) continue;
+    for (const p of Object.keys(documentCache.pages)) {
       if (!keepSet.has(p)) {
-        delete cache[key][p];
+        delete documentCache.pages[p];
       }
     }
-    if (Object.keys(cache[key]).length === 0) {
-      delete cache[key];
+    if (Object.keys(documentCache.pages).length === 0 && (!documentCache.baseline || documentCache.baseline === 0)) {
+      delete this.load().documents[this.normalizeDocumentPath(documentPath)];
     }
   }
 
   static hasDocument(documentPath) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) return false;
-    return Object.keys(cache[key]).some(page => !page.startsWith('_')) || cache[key]._cachedTo != null;
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return false;
+    return Object.keys(documentCache.pages || {}).length > 0 || (documentCache.baseline != null && documentCache.baseline > 0);
   }
 
   static getCachedDocuments() {
     const cache = this.load();
-    return Object.keys(cache);
+    return Object.keys(cache.documents || {});
   }
 
   static getPageNumbers(documentPath) {
-    const cache = this.load();
-    const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key]) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) {
       return [];
     }
-    return Object.keys(cache[key])
-      .filter(page => !page.startsWith('_'))
+    return Object.keys(documentCache.pages || {})
       .map(page => Number(page))
       .filter(page => Number.isFinite(page))
       .sort((a, b) => a - b);

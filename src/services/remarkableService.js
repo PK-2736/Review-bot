@@ -196,7 +196,13 @@ class RemarkableService {
             }
           });
           matchedGroup.pages.forEach(pageData => {
-            RemarkablePageCacheStore.setPageEntry(pageData.documentPath, pageData.page, pageData.hash, new Date().toISOString());
+            RemarkablePageCacheStore.setPageEntry(
+              pageData.documentPath,
+              pageData.page,
+              pageData.hash,
+              pageData.normalizedHash || pageData.hash,
+              new Date().toISOString()
+            );
           });
           RemarkablePageCacheStore.save();
         } else {

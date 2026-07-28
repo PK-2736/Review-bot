@@ -80,7 +80,7 @@ class RemarkablePageSyncService {
       const requestedStart = Math.max(1, Number(startPage) || 1);
       const requestedEnd = endPage != null ? Number(endPage) : null;
       if (requestedEnd != null && requestedStart > requestedEnd) {
-        return { changedPages, skippedPages, registeredPages };
+        return { changedPages, skippedPages, registeredPages, lastPage: requestedStart };
       }
 
       let page = requestedStart;
@@ -97,10 +97,18 @@ class RemarkablePageSyncService {
         const normalizedText = this.normalizeText(rawText);
         const rawHash = this.hashText(rawText);
         const normalizedHash = this.hashText(normalizedText);
-        const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-        const previousHash = existingEntry ? existingEntry.hash : null;
-        const same = previousHash === normalizedHash || previousHash === rawHash;
         const content = normalizedText;
+        const contentLength = content.length;
+
+        if (normalizedText === '' || contentLength === 0) {
+          console.log('Empty OCR page detected, ending scan:', { documentPath, page });
+          break;
+        }
+
+        const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
+        const previousHash = existingEntry ? (existingEntry.normalizedHash || existingEntry.hash) : null;
+        const same = previousHash === normalizedHash || previousHash === rawHash;
+        const changed = !existingEntry || !same;
 
         console.log({
           page,
@@ -109,7 +117,7 @@ class RemarkablePageSyncService {
           rawHash,
           normalizedHash,
           same,
-          contentLength: content.length,
+          contentLength,
           normalizedTextPreview: content.slice(0, 200),
         });
 
@@ -118,37 +126,32 @@ class RemarkablePageSyncService {
           console.log('Normalization debug:', normalizationDebug);
         }
 
-        if (existingEntry && same && previousHash === rawHash && previousHash !== normalizedHash) {
-          RemarkablePageCacheStore.setPageEntry(documentPath, page, normalizedHash, existingEntry.updatedAt || new Date().toISOString());
-        }
-
-        pagesSeen.push(page);
-
-        if (!existingEntry) {
-          console.log('New page detected:', 'document=', documentPath, 'page=', page);
-          if (content) {
-            changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
+        if (changed) {
+          if (!existingEntry) {
+            console.log('New page detected:', 'document=', documentPath, 'page=', page);
+          } else {
+            console.log('Page changed:', 'document=', documentPath, 'page=', page);
+            if (DEBUG) {
+              console.log('Changed page debug:', {
+                page,
+                documentPath,
+                previousHash,
+                rawHash,
+                normalizedHash,
+                rawTextPreview: JSON.stringify(rawText.slice(0, 200)),
+                normalizedTextPreview: JSON.stringify(normalizedText.slice(0, 200)),
+              });
+            }
           }
-        } else if (!same) {
-          console.log('Page changed:', 'document=', documentPath, 'page=', page);
-          if (content) {
-            changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
-          }
-          if (DEBUG) {
-            console.log('Changed page debug:', {
-              page,
-              documentPath,
-              previousHash,
-              rawHash,
-              normalizedHash,
-              rawTextPreview: JSON.stringify(rawText.slice(0, 200)),
-              normalizedTextPreview: JSON.stringify(normalizedText.slice(0, 200)),
-            });
-          }
+          changedPages.push({ document: documentPath, page, content, hash: normalizedHash, rawHash, normalizedHash });
         } else {
           console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
           skippedPages += 1;
         }
+
+        RemarkablePageCacheStore.setPageEntry(documentPath, page, rawHash, normalizedHash, new Date().toISOString());
+        pagesSeen.push(page);
+        registeredPages += 1;
 
         if (!parsed.more) {
           break;
@@ -162,7 +165,8 @@ class RemarkablePageSyncService {
         console.warn('Failed to remove stale pages from cache:', err.message);
       }
 
-      return { changedPages, skippedPages, registeredPages };
+      RemarkablePageCacheStore.save();
+      return { changedPages, skippedPages, registeredPages, lastPage: page };
     }
 
     let page = startPage;
@@ -176,10 +180,18 @@ class RemarkablePageSyncService {
       const normalizedText = this.normalizeText(rawText);
       const rawHash = this.hashText(rawText);
       const normalizedHash = this.hashText(normalizedText);
-      const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-      const previousHash = existingEntry ? existingEntry.hash : null;
-      const same = previousHash === normalizedHash || previousHash === rawHash;
       const content = normalizedText;
+      const contentLength = content.length;
+
+      if (normalizedText === '' || contentLength === 0) {
+        console.log('Empty OCR page detected, ending scan:', { documentPath, page });
+        break;
+      }
+
+      const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
+      const previousHash = existingEntry ? (existingEntry.normalizedHash || existingEntry.hash) : null;
+      const same = previousHash === normalizedHash || previousHash === rawHash;
+      const changed = !existingEntry || !same;
 
       console.log({
         page,
@@ -188,7 +200,7 @@ class RemarkablePageSyncService {
         rawHash,
         normalizedHash,
         same,
-        contentLength: content.length,
+        contentLength,
         normalizedTextPreview: content.slice(0, 200),
       });
 
@@ -197,12 +209,10 @@ class RemarkablePageSyncService {
         console.log('Normalization debug:', normalizationDebug);
       }
 
-      const changed = !existingEntry || !same;
-      registeredPages += 1;
       if (changed) {
         console.log('Page changed:', 'document=', documentPath, 'page=', page);
         if (content) {
-          changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
+          changedPages.push({ document: documentPath, page, content, hash: normalizedHash, rawHash, normalizedHash });
         }
         if (DEBUG) {
           console.log('Changed page debug:', {
@@ -219,8 +229,9 @@ class RemarkablePageSyncService {
         console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
         skippedPages += 1;
       }
-      RemarkablePageCacheStore.setPageEntry(documentPath, page, normalizedHash, new Date().toISOString());
+      RemarkablePageCacheStore.setPageEntry(documentPath, page, rawHash, normalizedHash, new Date().toISOString());
       pagesSeen.push(page);
+      registeredPages += 1;
       lastPage = page;
 
       if (!parsed.more) {
@@ -229,6 +240,7 @@ class RemarkablePageSyncService {
       page += 1;
     }
 
+    RemarkablePageCacheStore.save();
     return { changedPages, skippedPages, registeredPages, lastPage };
   }
 
