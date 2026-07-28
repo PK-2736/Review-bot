@@ -216,20 +216,44 @@ class TodoistService {
     try {
       const projectsResponse = await this.api.getProjects();
       const projects = normalizeProjectsResponse(projectsResponse);
-      const reviewProject = projects.find(
-        (p) => p.name === projectName
-      );
-
+      // Search existing projects for exact name match
+      const reviewProject = projects.find((p) => p && p.name === projectName);
       if (reviewProject) {
+        console.log('Todoist: existing project found, reusing', { projectName, projectId: reviewProject.id });
         this.projectCache.set(projectName, reviewProject.id);
-      } else {
-        const newProject = await this.api.addProject({
-          name: projectName,
-        });
-        this.projectCache.set(projectName, newProject.id);
+        return this.projectCache.get(projectName);
       }
 
-      return this.projectCache.get(projectName);
+      // Log reason why not found (list size may be large; log names only)
+      try {
+        const projectNames = projects.map(p => (p && p.name) ? p.name : String(p));
+        console.warn('Todoist: project not found by name', { searchedName: projectName, totalProjects: projectNames.length, projectNamesSample: projectNames.slice(0, 50) });
+      } catch (e) {
+        console.warn('Todoist: project not found, and failed to enumerate projects for logging', e.message);
+      }
+
+      // Respect an optional configured project limit to avoid hitting Todoist account limits
+      const configuredLimit = process.env.TODOIST_PROJECT_LIMIT ? Number(process.env.TODOIST_PROJECT_LIMIT) : null;
+      if (configuredLimit != null && Number.isFinite(configuredLimit) && projects.length >= configuredLimit) {
+        const msg = `Todoist project limit reached: ${projects.length} >= configured limit ${configuredLimit}. Will not attempt to create project.`;
+        console.error(msg);
+        const err = new Error(msg);
+        err.code = 'TODOIST_PROJECT_LIMIT_REACHED';
+        throw err;
+      }
+
+      // Try creating new project (only if we didn't detect a configured limit or not exceeded)
+      try {
+        const newProject = await this.api.addProject({ name: projectName });
+        console.log('Todoist: created new project', { projectName, projectId: newProject.id });
+        this.projectCache.set(projectName, newProject.id);
+        return this.projectCache.get(projectName);
+      } catch (createError) {
+        console.error('Todoist: failed to create project', { projectName, error: createError });
+        // Attach extra debug info
+        createError.message = `Failed to create Todoist project '${projectName}': ${createError.message}`;
+        throw createError;
+      }
     } catch (error) {
       console.error('Todoist プロジェクト取得エラー:', error);
       throw error;
