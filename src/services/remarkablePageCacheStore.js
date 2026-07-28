@@ -79,6 +79,24 @@ class RemarkablePageCacheStore {
     cache[key][String(page)] = { hash, updatedAt };
   }
 
+  static setDocumentBaseline(documentPath, page) {
+    const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key]) {
+      cache[key] = {};
+    }
+    cache[key]._cachedTo = Number(page);
+  }
+
+  static getDocumentBaseline(documentPath) {
+    const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key] || cache[key]._cachedTo == null) {
+      return 0;
+    }
+    return Number(cache[key]._cachedTo) || 0;
+  }
+
   static deletePageEntry(documentPath, page) {
     const cache = this.load();
     const key = this.normalizeDocumentPath(documentPath);
@@ -95,6 +113,7 @@ class RemarkablePageCacheStore {
     if (!cache[key]) return;
     const keepSet = new Set((keepPages || []).map(p => String(p)));
     for (const p of Object.keys(cache[key])) {
+      if (p.startsWith('_')) continue;
       if (!keepSet.has(p)) {
         delete cache[key][p];
       }
@@ -107,7 +126,8 @@ class RemarkablePageCacheStore {
   static hasDocument(documentPath) {
     const cache = this.load();
     const key = this.normalizeDocumentPath(documentPath);
-    return cache[key] != null && Object.keys(cache[key]).length > 0;
+    if (!cache[key]) return false;
+    return Object.keys(cache[key]).some(page => !page.startsWith('_')) || cache[key]._cachedTo != null;
   }
 
   static getCachedDocuments() {
@@ -122,6 +142,7 @@ class RemarkablePageCacheStore {
       return [];
     }
     return Object.keys(cache[key])
+      .filter(page => !page.startsWith('_'))
       .map(page => Number(page))
       .filter(page => Number.isFinite(page))
       .sort((a, b) => a - b);

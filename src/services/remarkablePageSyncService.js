@@ -17,6 +17,7 @@ class RemarkablePageSyncService {
 
   async initializeCacheForDocument(documentPath, startPage) {
     RemarkablePageCacheStore.ensureCacheFile();
+    RemarkablePageCacheStore.setDocumentBaseline(documentPath, Number(startPage));
     const startFrom = Math.max(1, Number(startPage) + 1);
     const result = await this.processPages(documentPath, startFrom, { forceRegister: true });
     RemarkablePageCacheStore.save();
@@ -25,7 +26,10 @@ class RemarkablePageSyncService {
 
   getChangedPagesForDocument(documentPath, startPage) {
     this.ensureCacheFileExists();
-    return this.processPages(documentPath, startPage, { forceRegister: false });
+    const baseline = RemarkablePageCacheStore.getDocumentBaseline(documentPath);
+    const requestedStart = Math.max(1, Number(startPage) || 1);
+    const effectiveStart = Math.max(requestedStart, baseline + 1);
+    return this.processPages(documentPath, effectiveStart, { forceRegister: false });
   }
 
   async processPages(documentPath, startPage, options = {}) {

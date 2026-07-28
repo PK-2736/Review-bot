@@ -312,9 +312,12 @@ async function handleCacheList(interaction) {
     let totalPages = 0;
     for (const doc of docs) {
       const pages = RemarkablePageCacheStore.getPageNumbers(doc);
+      const baseline = RemarkablePageCacheStore.getDocumentBaseline(doc);
       totalPages += pages.length;
-      const range = formatPageRange(pages);
-      embed.addFields({ name: doc, value: `${pages.length}ページ${range ? ` (${range})` : ''}`, inline: false });
+      const pageSummary = pages.length > 0
+        ? `${pages.length}ページ${formatPageRange(pages) ? ` (${formatPageRange(pages)})` : ''}${baseline > 0 ? `, baseline ${baseline}` : ''}`
+        : `${baseline > 0 ? `baseline ${baseline}` : '0ページ'}${baseline > 0 ? '' : ''}`;
+      embed.addFields({ name: doc, value: pageSummary, inline: false });
     }
 
     embed.addFields({ name: '合計', value: `${docs.length}ドキュメント / ${totalPages}ページ`, inline: false });
