@@ -17,7 +17,8 @@ class RemarkablePageSyncService {
 
   async initializeCacheForDocument(documentPath, startPage) {
     RemarkablePageCacheStore.ensureCacheFile();
-    const result = await this.processPages(documentPath, startPage, { forceRegister: true });
+    const startFrom = Math.max(1, Number(startPage) + 1);
+    const result = await this.processPages(documentPath, startFrom, { forceRegister: true });
     RemarkablePageCacheStore.save();
     return result;
   }
