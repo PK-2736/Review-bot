@@ -3,6 +3,7 @@ const remarkableMcp = require('./remarkableMcp');
 const RemarkablePageCacheStore = require('./remarkablePageCacheStore');
 
 const CACHE_MISSING_ERROR = 'ページキャッシュが存在しません。/cache コマンドで初期化してください。';
+const DEBUG = process.env.DEBUG_REMARKABLE === 'true';
 
 class RemarkablePageSyncService {
   hasCacheFile() {
@@ -32,6 +33,37 @@ class RemarkablePageSyncService {
     return this.processPages(documentPath, effectiveStart, { forceRegister: false });
   }
 
+  normalizeText(text) {
+    if (typeof text !== 'string') {
+      return '';
+    }
+
+    // Normalize line endings first.
+    const normalizedEol = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedEol
+      .split('\n')
+      .map(line => line.replace(/[ \t]+$/u, '')) // remove trailing whitespace
+      .map(line => line.replace(/[ \t]{2,}/gu, ' ')) // collapse repeated spaces/tabs
+      .map(line => line.replace(/\u00A0/g, ' '));
+
+    const filtered = lines.filter(line => line.trim() !== '');
+    return filtered.join('\n').trim();
+  }
+
+  buildNormalizationDebug(rawText, normalizedText) {
+    const rawPreview = JSON.stringify(rawText.slice(0, 200));
+    const normalizedPreview = JSON.stringify(normalizedText.slice(0, 200));
+    const diffSummary = rawText === normalizedText
+      ? 'No normalization change'
+      : 'Normalization changed whitespace or empty lines';
+
+    return {
+      rawPreview,
+      normalizedPreview,
+      diffSummary,
+    };
+  }
+
   async processPages(documentPath, startPage, options = {}) {
     const { forceRegister = false } = options;
     const changedPages = [];
@@ -52,35 +84,57 @@ class RemarkablePageSyncService {
         console.log('remarkable_read args:', JSON.stringify(readArgs));
         const readResult = await remarkableMcp.read(readArgs);
         const parsed = this.parseReadResult(readResult);
-        const text = this.resolvePageText(readResult, parsed);
-        const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
-        const contentHash = this.hashText(hashSource);
+        const rawText = this.resolvePageText(readResult, parsed);
+        const normalizedText = this.normalizeText(rawText);
+        const rawHash = this.hashText(rawText);
+        const normalizedHash = this.hashText(normalizedText);
         const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
         const previousHash = existingEntry ? existingEntry.hash : null;
-        const same = previousHash === contentHash;
-        const content = text || '';
+        const same = previousHash === normalizedHash || previousHash === rawHash;
+        const content = normalizedText;
+
         console.log({
           page,
           previousHash,
           previousHashSource: existingEntry ? 'cache' : 'none',
-          currentHash: contentHash,
+          rawHash,
+          normalizedHash,
           same,
           contentLength: content.length,
-          preview: content.slice(0, 200),
+          normalizedTextPreview: content.slice(0, 200),
         });
+
+        if (DEBUG || rawText !== normalizedText) {
+          const normalizationDebug = this.buildNormalizationDebug(rawText, normalizedText);
+          console.log('Normalization debug:', normalizationDebug);
+        }
+
+        if (existingEntry && same && previousHash === rawHash && previousHash !== normalizedHash) {
+          RemarkablePageCacheStore.setPageEntry(documentPath, page, normalizedHash, existingEntry.updatedAt || new Date().toISOString());
+        }
 
         pagesSeen.push(page);
 
         if (!existingEntry) {
-          // New page
           console.log('New page detected:', 'document=', documentPath, 'page=', page);
-          if (text) {
-            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+          if (content) {
+            changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
           }
         } else if (!same) {
           console.log('Page changed:', 'document=', documentPath, 'page=', page);
-          if (text) {
-            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+          if (content) {
+            changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
+          }
+          if (DEBUG) {
+            console.log('Changed page debug:', {
+              page,
+              documentPath,
+              previousHash,
+              rawHash,
+              normalizedHash,
+              rawTextPreview: JSON.stringify(rawText.slice(0, 200)),
+              normalizedTextPreview: JSON.stringify(normalizedText.slice(0, 200)),
+            });
           }
         } else {
           console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
@@ -109,35 +163,54 @@ class RemarkablePageSyncService {
       console.log('remarkable_read args:', JSON.stringify(readArgs));
       const readResult = await remarkableMcp.read(readArgs);
       const parsed = this.parseReadResult(readResult);
-      const text = this.resolvePageText(readResult, parsed);
-      const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
-      const contentHash = this.hashText(hashSource);
+      const rawText = this.resolvePageText(readResult, parsed);
+      const normalizedText = this.normalizeText(rawText);
+      const rawHash = this.hashText(rawText);
+      const normalizedHash = this.hashText(normalizedText);
       const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
       const previousHash = existingEntry ? existingEntry.hash : null;
-      const same = previousHash === contentHash;
-      const content = text || '';
+      const same = previousHash === normalizedHash || previousHash === rawHash;
+      const content = normalizedText;
+
       console.log({
         page,
         previousHash,
         previousHashSource: existingEntry ? 'cache' : 'none',
-        currentHash: contentHash,
+        rawHash,
+        normalizedHash,
         same,
         contentLength: content.length,
-        preview: content.slice(0, 200),
+        normalizedTextPreview: content.slice(0, 200),
       });
-      const changed = !existingEntry || !same;
 
+      if (DEBUG || rawText !== normalizedText) {
+        const normalizationDebug = this.buildNormalizationDebug(rawText, normalizedText);
+        console.log('Normalization debug:', normalizationDebug);
+      }
+
+      const changed = !existingEntry || !same;
       registeredPages += 1;
       if (changed) {
         console.log('Page changed:', 'document=', documentPath, 'page=', page);
-        if (text) {
-          changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+        if (content) {
+          changedPages.push({ document: documentPath, page, content, hash: normalizedHash });
+        }
+        if (DEBUG) {
+          console.log('Changed page debug:', {
+            page,
+            documentPath,
+            previousHash,
+            rawHash,
+            normalizedHash,
+            rawTextPreview: JSON.stringify(rawText.slice(0, 200)),
+            normalizedTextPreview: JSON.stringify(normalizedText.slice(0, 200)),
+          });
         }
       } else {
         console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
         skippedPages += 1;
       }
-      RemarkablePageCacheStore.setPageEntry(documentPath, page, contentHash, new Date().toISOString());
+      RemarkablePageCacheStore.setPageEntry(documentPath, page, normalizedHash, new Date().toISOString());
 
       if (!parsed.more) {
         break;
