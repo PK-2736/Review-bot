@@ -76,31 +76,9 @@ class RemarkablePageCacheStore {
       if (!createIfMissing) {
         return null;
       }
-      cache.documents[key] = { baseline: 0, pages: {} };
-    }
-    if (!cache.documents[key].pages || typeof cache.documents[key].pages !== 'object') {
-      cache.documents[key].pages = {};
+      cache.documents[key] = { baseline: 0 };
     }
     return cache.documents[key];
-  }
-
-  static getPageEntry(documentPath, page) {
-    const documentCache = this.getDocumentCache(documentPath, false);
-    if (!documentCache) {
-      return null;
-    }
-    const pageKey = String(page);
-    return documentCache.pages[pageKey] || null;
-  }
-
-  static setPageEntry(documentPath, page, hash, normalizedHash, updatedAt) {
-    const documentCache = this.getDocumentCache(documentPath, true);
-    const pageKey = String(page);
-    documentCache.pages[pageKey] = {
-      hash,
-      normalizedHash,
-      updatedAt,
-    };
   }
 
   static setDocumentBaseline(documentPath, page) {
@@ -115,69 +93,22 @@ class RemarkablePageCacheStore {
     }
 
     const explicitBaseline = documentCache.baseline;
-    if (explicitBaseline != null && Number.isFinite(Number(explicitBaseline)) && Number(explicitBaseline) > 0) {
+    if (explicitBaseline != null && Number.isFinite(Number(explicitBaseline))) {
       return Number(explicitBaseline);
     }
 
-    const pageNumbers = Object.keys(documentCache.pages || {})
-      .map(page => Number(String(page).trim()))
-      .filter(page => Number.isFinite(page));
-
-    if (pageNumbers.length === 0) {
-      return 0;
-    }
-
-    const maxPage = Math.max(...pageNumbers);
-    if (process.env.DEBUG_REMARKABLE === 'true') {
-      console.log('RemarkablePageCacheStore.getDocumentBaseline', { documentPath, explicitBaseline, pageNumbers, maxPage });
-    }
-
-    return maxPage;
-  }
-
-  static deletePageEntry(documentPath, page) {
-    const documentCache = this.getDocumentCache(documentPath, false);
-    if (!documentCache) return;
-    delete documentCache.pages[String(page)];
-    if (Object.keys(documentCache.pages).length === 0 && (!documentCache.baseline || documentCache.baseline === 0)) {
-      delete this.load().documents[this.normalizeDocumentPath(documentPath)];
-    }
-  }
-
-  static removeStalePages(documentPath, keepPages = []) {
-    const documentCache = this.getDocumentCache(documentPath, false);
-    if (!documentCache) return;
-    const keepSet = new Set((keepPages || []).map(p => String(p)));
-    for (const p of Object.keys(documentCache.pages)) {
-      if (!keepSet.has(p)) {
-        delete documentCache.pages[p];
-      }
-    }
-    if (Object.keys(documentCache.pages).length === 0 && (!documentCache.baseline || documentCache.baseline === 0)) {
-      delete this.load().documents[this.normalizeDocumentPath(documentPath)];
-    }
+    return 0;
   }
 
   static hasDocument(documentPath) {
     const documentCache = this.getDocumentCache(documentPath, false);
     if (!documentCache) return false;
-    return Object.keys(documentCache.pages || {}).length > 0 || (documentCache.baseline != null && documentCache.baseline > 0);
+    return documentCache.baseline != null && documentCache.baseline > 0;
   }
 
   static getCachedDocuments() {
     const cache = this.load();
     return Object.keys(cache.documents || {});
-  }
-
-  static getPageNumbers(documentPath) {
-    const documentCache = this.getDocumentCache(documentPath, false);
-    if (!documentCache) {
-      return [];
-    }
-    return Object.keys(documentCache.pages || {})
-      .map(page => Number(page))
-      .filter(page => Number.isFinite(page))
-      .sort((a, b) => a - b);
   }
 
   static hasCacheFile() {

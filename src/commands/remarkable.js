@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const remarkableService = require('../services/remarkableService');
-const RemarkablePageSyncService = require('../services/remarkablePageSyncService');
 const RemarkableCacheStore = require('../services/remarkableCacheStore');
 const RemarkablePageCacheStore = require('../services/remarkablePageCacheStore');
 const remarkableMcp = require('../services/remarkableMcp');
@@ -196,16 +195,16 @@ async function handleCache(interaction) {
     console.log('Cache key:', `document=${documentPath}`, `normalizedKey=${normalizedKey}`);
     await interaction.deferReply();
 
-    const result = await RemarkablePageSyncService.initializeCacheForDocument(documentPath, page);
+    RemarkablePageCacheStore.ensureCacheFile();
+    RemarkablePageCacheStore.setDocumentBaseline(documentPath, page);
+    RemarkablePageCacheStore.save();
 
     const embed = new EmbedBuilder()
       .setColor('#FF9800')
       .setTitle('🗂️ reMarkable ページキャッシュ初期化完了')
       .setDescription(`ドキュメント: ${documentPath}`)
       .addFields(
-        { name: '📄 開始ページ', value: String(page), inline: true },
-        { name: '✅ 登録ページ', value: `${result.registeredPages}件`, inline: true },
-        { name: '🔁 変更ページ', value: `${result.changedPages.length}件`, inline: true }
+        { name: '📄 baseline', value: String(page), inline: true }
       )
       .setTimestamp();
 
@@ -309,18 +308,13 @@ async function handleCacheList(interaction) {
       .setTitle('🗂️ ページキャッシュ一覧')
       .setTimestamp();
 
-    let totalPages = 0;
     for (const doc of docs) {
-      const pages = RemarkablePageCacheStore.getPageNumbers(doc);
-      const baseline = RemarkablePageCacheStore.getDocumentBaseline(doc);
-      totalPages += pages.length;
-      const pageSummary = pages.length > 0
-        ? `${pages.length}ページ${formatPageRange(pages) ? ` (${formatPageRange(pages)})` : ''}${baseline > 0 ? `, baseline ${baseline}` : ''}`
-        : `${baseline > 0 ? `baseline ${baseline}` : '0ページ'}${baseline > 0 ? '' : ''}`;
+      const baseline = RemarkablePageCacheStore.getDocumentBaseline(doc) || 0;
+      const pageSummary = `baseline ${baseline}`;
       embed.addFields({ name: doc, value: pageSummary, inline: false });
     }
 
-    embed.addFields({ name: '合計', value: `${docs.length}ドキュメント / ${totalPages}ページ`, inline: false });
+    embed.addFields({ name: '合計', value: `${docs.length}ドキュメント`, inline: false });
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {

@@ -82,6 +82,7 @@ class RemarkableService {
     const cachedDocuments = RemarkablePageCacheStore.getCachedDocuments();
     console.log('Cache found:', cachedDocuments.map(doc => `document=${doc}`).join(', '));
 
+    const documentLastPages = {};
     for (const document of documents) {
       const key = document.id;
       const normalizedKey = RemarkablePageCacheStore.normalizeDocumentPath(document.path);
@@ -102,6 +103,11 @@ class RemarkableService {
         summary.changedPages += result.changedPages.length;
         summary.skippedPages += result.skippedPages;
 
+        // record lastPage for later baseline update
+        if (result.lastPage != null) {
+          documentLastPages[document.path] = result.lastPage;
+        }
+
         if (result.changedPages.length > 0) {
           groups.push({
             name: document.name,
@@ -114,7 +120,6 @@ class RemarkableService {
               label: String(pageData.page),
               content: pageData.content,
               text: pageData.content,
-              hash: pageData.hash,
             })),
           });
         }
@@ -146,6 +151,7 @@ class RemarkableService {
     const today = new Date();
 
     const successfulPages = [];
+    const processedKeysLocal = [];
 
     const findGroupForNotebook = (notebook, groups, index) => {
       const normalizedName = String(notebook.name || '').trim().toLowerCase();
@@ -192,19 +198,11 @@ class RemarkableService {
         if (matchedGroup) {
           matchedGroup.pages.forEach(pageData => {
             if (!successfulPages.some(sp => sp.documentPath === pageData.documentPath && sp.page === pageData.page)) {
-              successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page, hash: pageData.hash });
+              successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page });
             }
+            // prepare processedKeys for RemarkableCacheStore
+            processedKeysLocal.push({ key: `${notebook.name}:${pageData.page}`, notebook: notebook.name, page: pageData.page });
           });
-          matchedGroup.pages.forEach(pageData => {
-            RemarkablePageCacheStore.setPageEntry(
-              pageData.documentPath,
-              pageData.page,
-              pageData.hash,
-              pageData.normalizedHash || pageData.hash,
-              new Date().toISOString()
-            );
-          });
-          RemarkablePageCacheStore.save();
         } else {
           console.warn(`Todoist succeeded but notebook group not found for cache update: ${notebook.name}`);
         }
@@ -216,7 +214,20 @@ class RemarkableService {
 
     summary.notebooks = plan.notebooks.length;
 
-    this.commitCache(processedKeys);
+    // commit processed page records for history
+    this.commitCache(processedKeysLocal);
+
+    // update baselines for processed documents (one save at end)
+    try {
+      for (const [docPath, lastPage] of Object.entries(documentLastPages)) {
+        if (lastPage != null) {
+          RemarkablePageCacheStore.setDocumentBaseline(docPath, lastPage);
+        }
+      }
+      RemarkablePageCacheStore.save();
+    } catch (err) {
+      console.warn('Failed to update document baselines:', err.message);
+    }
 
     console.log(summary);
     return summary;
