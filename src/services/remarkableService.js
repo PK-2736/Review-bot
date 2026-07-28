@@ -143,12 +143,23 @@ class RemarkableService {
 
     const successfulPages = [];
 
+    const findGroupForNotebook = (notebook, groups, index) => {
+      const normalizedName = String(notebook.name || '').trim().toLowerCase();
+      let group = groups.find(g => String(g.name || '').trim().toLowerCase() === normalizedName);
+      if (!group && groups[index]) {
+        group = groups[index];
+      }
+      return group;
+    };
+
     // Create a single Todoist task per notebook, consolidating multiple Gemini tasks
-    for (const notebook of plan.notebooks) {
+    for (let notebookIndex = 0; notebookIndex < plan.notebooks.length; notebookIndex += 1) {
+      const notebook = plan.notebooks[notebookIndex];
       const projectName = `${config.remarkable.projectPrefix || ''}${notebook.name}`;
       summary.notebookNames.push(notebook.name);
 
-      const pageNumbers = groups.find(g => g.name === notebook.name)?.pages.map(p => Number(p.page)) || [];
+      const matchedGroup = findGroupForNotebook(notebook, groups, notebookIndex);
+      const pageNumbers = matchedGroup?.pages.map(p => Number(p.page)) || [];
       const pageHeader = formatPageRangeForDescription(pageNumbers);
 
       // Combine Gemini tasks into one description/content
@@ -174,27 +185,22 @@ class RemarkableService {
         summary.created += 1;
         summary.todoistCreated += 1;
 
-        const pageGroup = groups.find(g => g.name === notebook.name);
-        if (pageGroup) {
-          pageGroup.pages.forEach(pageData => {
+        if (matchedGroup) {
+          matchedGroup.pages.forEach(pageData => {
             if (!successfulPages.some(sp => sp.documentPath === pageData.documentPath && sp.page === pageData.page)) {
               successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page, hash: pageData.hash });
             }
           });
+          matchedGroup.pages.forEach(pageData => {
+            RemarkablePageCacheStore.setPageEntry(pageData.documentPath, pageData.page, pageData.hash, new Date().toISOString());
+          });
+          RemarkablePageCacheStore.save();
+        } else {
+          console.warn(`Todoist succeeded but notebook group not found for cache update: ${notebook.name}`);
         }
       } catch (error) {
         console.error(`Todoist登録失敗 (${notebook.name}):`, error.message);
         summary.errors.push(`Todoist: ${notebook.name} - ${error.message}`);
-      }
-    }
-
-    // 成功したページのみキャッシュを更新（更新ごとに保存）
-    for (const pageData of successfulPages) {
-      RemarkablePageCacheStore.setPageEntry(pageData.documentPath, pageData.page, pageData.hash, new Date().toISOString());
-      try {
-        RemarkablePageCacheStore.save();
-      } catch (error) {
-        console.error('ページキャッシュ保存エラー:', error.message);
       }
     }
 
