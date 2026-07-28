@@ -7,7 +7,7 @@ const remarkableMcp = require('../services/remarkableMcp');
 const config = require('../config');
 
 // Autocomplete: provide document choices from MCP
-module.exports.autocomplete = async (interaction) => {
+async function autocomplete(interaction) {
   try {
     if (!remarkableMcp.isConfigured()) {
       return await interaction.respond([]);
@@ -27,7 +27,7 @@ module.exports.autocomplete = async (interaction) => {
     console.error('remarkable autocomplete error:', error.message);
     try { await interaction.respond([]); } catch (e) {}
   }
-};
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -74,6 +74,7 @@ module.exports = {
       await handleCache(interaction);
     }
   },
+  autocomplete,
 };
 
 /**
