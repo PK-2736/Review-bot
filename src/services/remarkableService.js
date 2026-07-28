@@ -15,7 +15,7 @@ const DEBUG = process.env.DEBUG_REMARKABLE === 'true';
  *   - bot側(このサービス): MCPからOCR済みテキストを取得 → Gemini で復習内容生成 → Todoist登録。
  *
  * フロー:
- *   recent → 更新ページのOCR済みテキスト取得 → キャッシュ除外 → ノート別集約
+ *   recent → documents取得 → キャッシュ除外 → remarkable_read(document) → OCR取得
  *          → Gemini(1回) → JSON検証 → Todoist登録 → キャッシュ記録
  */
 class RemarkableService {
@@ -37,7 +37,7 @@ class RemarkableService {
   }
 
   /**
-   * 今日更新されたノートを解析し、復習タスクをTodoistへ登録
+   * 今日更新されたドキュメントを解析し、復習タスクをTodoistへ登録
    * @returns {Promise<{created:number, skipped:number, notebooks:number, notebookNames:string[], errors:string[]}>}
    */
   async syncTodayReviews() {
@@ -47,69 +47,69 @@ class RemarkableService {
       throw new Error(`必要な設定が不足しています: ${this.missingConfig().join(', ')}`);
     }
 
-    // ① 今日更新されたノート取得
     const recentRaw = await remarkableMcp.recent({});
-    const notebooks = this.normalizeRecent(recentRaw);
+    const documents = this.normalizeRecent(recentRaw);
 
-    console.log('🖊️ reMarkable sync: recent result type=', typeof recentRaw, 'notebooks=', notebooks.length);
+    console.log('🖊️ reMarkable sync: documents count=', documents.length);
+    console.log('🖊️ reMarkable sync: documents=', documents.map(doc => ({ id: doc.id, name: doc.name, path: doc.path })));
     if (DEBUG) console.log('reMarkable debug: recentRaw', JSON.stringify(recentRaw).slice(0, 2000));
-    console.log('🖊️ reMarkable sync: normalized notebooks=', notebooks.map(n => ({ id: n.id, name: n.name, pages: n.pages.length })));
 
-    if (notebooks.length === 0) {
-      console.warn('⚠️ reMarkable sync: no notebooks found after normalization');
+    if (documents.length === 0) {
+      console.warn('⚠️ reMarkable sync: no documents found after normalization');
       return summary;
     }
 
-    // ②〜④ ページ取得 → キャッシュ除外 → OCR → ノート別集約
-    const groups = []; // { name, pages: [{ key, text }] }
-    const processedKeys = []; // 成功後にキャッシュへ記録するキー
+    const groups = [];
+    const processedKeys = [];
 
-    for (const notebook of notebooks) {
-      const pageTexts = [];
-
-      for (const page of notebook.pages) {
-        const key = `${notebook.id}:${page.id}`;
-
-        // ③ 解析済みページを除外
-        if (RemarkableCacheStore.has(key)) {
-          summary.skipped += 1;
-          continue;
-        }
-
-        try {
-          if (DEBUG) console.log(`reMarkable debug: fetching page text notebook=${notebook.name} page=${page.label} key=${key}`);
-          const text = await this.getPageText(notebook, page);
-          if (text) {
-            pageTexts.push({ key, label: page.label, text });
-            processedKeys.push({ key, notebook: notebook.name, page: page.id });
-          } else {
-            console.warn(`⚠️ reMarkable sync: empty text for notebook=${notebook.name} page=${page.label} key=${key}`);
-            processedKeys.push({ key, notebook: notebook.name, page: page.id, empty: true });
-          }
-        } catch (error) {
-          console.error(`ページ取得失敗 (${key}):`, error.message);
-          summary.errors.push(`取得: ${notebook.name} p.${page.label} - ${error.message}`);
-        }
+    for (const document of documents) {
+      const key = document.id;
+      if (RemarkableCacheStore.has(key)) {
+        summary.skipped += 1;
+        continue;
       }
 
-      if (pageTexts.length > 0) {
-        groups.push({ name: notebook.name, pages: pageTexts });
+      try {
+        const readArgs = { document: document.name, include_ocr: true };
+        console.log('🖊️ reMarkable sync: remarkable_read args', readArgs);
+        const readResult = await remarkableMcp.read(readArgs);
+        console.log('🖊️ reMarkable sync: remarkable_read result', {
+          hasText: typeof readResult.text === 'string',
+          hasJson: typeof readResult.json === 'object',
+          hasResult: typeof readResult.json?.result === 'string',
+          images: readResult.images?.length || 0,
+        });
+
+        const text = this.extractOcrText(readResult);
+        console.log('🖊️ reMarkable sync: ocr text length=', text.length, 'document=', document.name);
+
+        if (text) {
+          groups.push({
+            name: document.name,
+            pages: [{ key, label: document.name, text }],
+          });
+          processedKeys.push({ key, notebook: document.name, page: 'document' });
+        } else {
+          console.warn(`⚠️ reMarkable sync: empty OCR text for document=${document.name}`);
+          processedKeys.push({ key, notebook: document.name, page: 'document', empty: true });
+        }
+      } catch (error) {
+        console.error(`ドキュメント取得失敗 (${document.name}):`, error.message);
+        summary.errors.push(`取得: ${document.name} - ${error.message}`);
       }
     }
 
+    console.log('🖊️ reMarkable sync: groups count=', groups.length);
     if (groups.length === 0) {
-      // 新規に解析するページがなかった場合でも、キャッシュだけは更新
       this.commitCache(processedKeys);
       return summary;
     }
 
-    // ⑤ Gemini へ 1 回だけ送信
     const groupedText = this.buildGroupedText(groups);
     if (DEBUG) console.log('reMarkable debug: groupedText\n', groupedText.slice(0, 1000));
 
     const plan = await geminiService.generateReviewPlan(groupedText);
 
-    // ⑥〜⑧ 検証済みJSONを Todoist へ登録
     const today = new Date();
 
     for (const notebook of plan.notebooks) {
@@ -137,59 +137,9 @@ class RemarkableService {
 
     summary.notebooks = plan.notebooks.length;
 
-    // ⑨ 解析済みページを記録
     this.commitCache(processedKeys);
 
     return summary;
-  }
-
-  /**
-   * 1ページのOCR済みテキストを取得する。
-   * OCR は MCP 側（Google Vision）で完了しているため、bot側はテキストを受け取るだけ。
-   *   1. recent の応答にページ本文が含まれていればそれを使う
-   *   2. なければ remarkable_read で取得する
-   */
-  async getPageText(notebook, page) {
-    // ① recent にテキストが含まれるケース
-    if (page.text) {
-      if (DEBUG) console.log(`reMarkable debug: page text found in recent for ${notebook.name} p.${page.label}`);
-      return page.text;
-    }
-
-    // ② remarkable_read でOCR済みテキストを取得
-    const args = this.buildPageArgs(notebook, page);
-    if (DEBUG) console.log('reMarkable debug: remarkable_read args', args);
-    const readResult = await remarkableMcp.read(args);
-
-    if (DEBUG) console.log('reMarkable debug: remarkable_read result', {
-      text: readResult.text ? '[text]' : '',
-      json: !!readResult.json,
-      images: readResult.images?.length || 0,
-    });
-
-    if (readResult.text) {
-      return readResult.text;
-    }
-    // JSON形式で { text } を返す実装への保険
-    if (readResult.json && typeof readResult.json.text === 'string') {
-      return readResult.json.text;
-    }
-
-    return '';
-  }
-
-  /**
-   * MCP ツールへ渡すページ引数を組み立てる。
-   * サーバー実装差に備え、代表的なキーをまとめて渡す。
-   */
-  buildPageArgs(notebook, page) {
-    return {
-      id: notebook.id,
-      documentId: notebook.id,
-      page: page.id,
-      pageId: page.id,
-      pageIndex: page.index,
-    };
   }
 
   /**
@@ -204,6 +154,27 @@ class RemarkableService {
         return `${group.name}\n\n${body}`;
       })
       .join('\n\n----------------------\n\n');
+  }
+
+  extractOcrText(readResult) {
+    if (!readResult) return '';
+    if (typeof readResult.text === 'string' && readResult.text.trim() !== '') {
+      return readResult.text;
+    }
+    if (readResult.json && typeof readResult.json.text === 'string' && readResult.json.text.trim() !== '') {
+      return readResult.json.text;
+    }
+    if (readResult.json && typeof readResult.json.result === 'string') {
+      try {
+        const parsed = JSON.parse(readResult.json.result);
+        if (parsed && typeof parsed.text === 'string') {
+          return parsed.text;
+        }
+      } catch (error) {
+        if (DEBUG) console.log('reMarkable debug: parse readResult.json.result failed', error.message);
+      }
+    }
+    return '';
   }
 
   /**
@@ -228,83 +199,63 @@ class RemarkableService {
 
   /**
    * remarkable_recent の応答を正規化
-   * @returns {Array<{id:string, name:string, pages:Array<{id:string, index:number, label:string}>}>}
+   * @returns {Array<{id:string, name:string, path:string, modified?:string}>}
    */
   normalizeRecent(recentResult) {
-    // extractContent の戻り値 { text, json, images } を許容
     let data = recentResult;
     if (recentResult && typeof recentResult === 'object' && 'json' in recentResult) {
-      data = recentResult.json != null ? recentResult.json : recentResult.text;
+      if (recentResult.json != null) {
+        let parsed = recentResult.json;
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed);
+          } catch (error) {
+            if (DEBUG) console.log('reMarkable debug: parse recentResult.json failed', error.message);
+            return [];
+          }
+        }
+
+        if (parsed && typeof parsed === 'object' && typeof parsed.result === 'string') {
+          try {
+            parsed = JSON.parse(parsed.result);
+          } catch (error) {
+            if (DEBUG) console.log('reMarkable debug: parse recentResult.json.result failed', error.message);
+            return [];
+          }
+        }
+
+        data = parsed;
+      } else {
+        data = recentResult.text;
+      }
     }
 
-    const list = this.toArray(data, ['notebooks', 'documents', 'items', 'recent', 'results', 'data']);
+    const list = this.toArray(data, ['documents']);
     if (DEBUG) console.log('reMarkable debug: normalizeRecent', {
       dataType: typeof data,
       dataKeys: data && typeof data === 'object' ? Object.keys(data) : null,
       listLength: list.length,
     });
-    const notebooks = [];
+
+    const documents = [];
 
     for (const raw of list) {
       if (!raw || typeof raw !== 'object') continue;
 
-      const id = this.firstDefined(raw, ['id', 'uuid', 'documentId', 'hash', 'docId']);
-      const name = this.firstDefined(raw, ['name', 'title', 'visibleName', 'displayName']) || '(無題ノート)';
+      const id = this.firstDefined(raw, ['path']);
+      const name = this.firstDefined(raw, ['name']) || '(無題ドキュメント)';
+      const modified = this.firstDefined(raw, ['modified', 'updated', 'timestamp']);
       if (id == null) continue;
 
-      const pages = this.normalizePages(raw);
-      if (pages.length === 0) continue;
-
-      notebooks.push({ id: String(id), name: String(name), pages });
+      documents.push({
+        id: String(id),
+        name: String(name),
+        path: String(id),
+        modified: modified != null ? String(modified) : undefined,
+      });
     }
 
-    return notebooks;
-  }
-
-  /**
-   * ノート内の更新ページを正規化
-   */
-  normalizePages(raw) {
-    const rawPages =
-      raw.updatedPages ||
-      raw.modifiedPages ||
-      raw.changedPages ||
-      raw.pages ||
-      [];
-
-    const arr = Array.isArray(rawPages) ? rawPages : [];
-    if (DEBUG) console.log('reMarkable debug: normalizePages', {
-      rawType: typeof rawPages,
-      rawPagesLength: arr.length,
-      rawKeys: rawPages && typeof rawPages === 'object' ? Object.keys(rawPages) : null,
-    });
-    const pages = [];
-
-    arr.forEach((p, index) => {
-      if (p == null) return;
-
-      if (typeof p === 'string' || typeof p === 'number') {
-        pages.push({ id: String(p), index, label: String(p) });
-        return;
-      }
-
-      if (typeof p === 'object') {
-        const id = this.firstDefined(p, ['id', 'pageId', 'uuid', 'hash']);
-        const pageIndex = this.firstDefined(p, ['index', 'pageNumber', 'number']);
-        const idx = pageIndex != null ? Number(pageIndex) : index;
-        const resolvedId = id != null ? String(id) : String(idx);
-        // recent の応答にOCR済みテキストが含まれる場合は取り込む
-        const text = this.firstDefined(p, ['text', 'ocr', 'ocrText', 'content']);
-        pages.push({
-          id: resolvedId,
-          index: idx,
-          label: pageIndex != null ? String(pageIndex) : resolvedId,
-          text: typeof text === 'string' ? text : undefined,
-        });
-      }
-    });
-
-    return pages;
+    return documents;
   }
 
   /**
