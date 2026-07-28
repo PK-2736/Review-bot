@@ -34,8 +34,15 @@ class RemarkablePageSyncService {
     let registeredPages = 0;
 
     if (!forceRegister) {
+      // Read all pages sequentially starting from startPage.
+      // Treat pages not present in cache as new pages (will be returned in changedPages),
+      // but do NOT update the cache here — cache is updated only after successful Todoist registration.
       const cachedPages = RemarkablePageCacheStore.getPageNumbers(documentPath).filter(page => page >= startPage);
-      for (const page of cachedPages) {
+      const cachedSet = new Set(cachedPages.map(p => Number(p)));
+
+      const pagesSeen = [];
+      let page = startPage;
+      while (true) {
         const readArgs = { document: documentPath, page, include_ocr: true };
         console.log('remarkable_read args:', JSON.stringify(readArgs));
         const readResult = await remarkableMcp.read(readArgs);
@@ -56,17 +63,36 @@ class RemarkablePageSyncService {
           contentLength: content.length,
           preview: content.slice(0, 200),
         });
-        const changed = existingEntry && !same;
 
-        if (changed) {
+        pagesSeen.push(page);
+
+        if (!existingEntry) {
+          // New page
+          console.log('New page detected:', 'document=', documentPath, 'page=', page);
+          if (text) {
+            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+          }
+        } else if (!same) {
           console.log('Page changed:', 'document=', documentPath, 'page=', page);
           if (text) {
-            changedPages.push({ document: documentPath, documentPath, page, content: text, hash: contentHash });
+            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
           }
         } else {
           console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
           skippedPages += 1;
         }
+
+        if (!parsed.more) {
+          break;
+        }
+        page += 1;
+      }
+
+      // Remove stale cached pages that no longer exist in the document
+      try {
+        RemarkablePageCacheStore.removeStalePages(documentPath, pagesSeen);
+      } catch (err) {
+        console.warn('Failed to remove stale pages from cache:', err.message);
       }
 
       return { changedPages, skippedPages, registeredPages };

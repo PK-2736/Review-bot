@@ -79,6 +79,31 @@ class RemarkablePageCacheStore {
     cache[key][String(page)] = { hash, updatedAt };
   }
 
+  static deletePageEntry(documentPath, page) {
+    const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key]) return;
+    delete cache[key][String(page)];
+    if (Object.keys(cache[key]).length === 0) {
+      delete cache[key];
+    }
+  }
+
+  static removeStalePages(documentPath, keepPages = []) {
+    const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key]) return;
+    const keepSet = new Set((keepPages || []).map(p => String(p)));
+    for (const p of Object.keys(cache[key])) {
+      if (!keepSet.has(p)) {
+        delete cache[key][p];
+      }
+    }
+    if (Object.keys(cache[key]).length === 0) {
+      delete cache[key];
+    }
+  }
+
   static hasDocument(documentPath) {
     const cache = this.load();
     const key = this.normalizeDocumentPath(documentPath);
