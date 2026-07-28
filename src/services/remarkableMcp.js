@@ -75,6 +75,10 @@ class RemarkableMcpClient {
     const message = await this.parseResponse(response);
 
     if (!response.ok) {
+      if (DEBUG) console.log(`MCP debug: ${method} failed`, {
+        status: response.status,
+        message,
+      });
       const error = new Error(`MCP request failed (${method})`);
       error.httpStatusCode = response.status;
       error.responseData = message;
@@ -82,6 +86,7 @@ class RemarkableMcpClient {
     }
 
     if (message && message.error) {
+      if (DEBUG) console.log(`MCP debug: ${method} tool error`, message.error);
       const error = new Error(`MCP error (${method}): ${message.error.message || 'unknown'}`);
       error.responseData = message.error;
       throw error;

@@ -51,9 +51,12 @@ class RemarkableService {
     const recentRaw = await remarkableMcp.recent({});
     const notebooks = this.normalizeRecent(recentRaw);
 
-    if (DEBUG) console.log('reMarkable debug: notebooks', JSON.stringify(notebooks).slice(0, 500));
+    console.log('🖊️ reMarkable sync: recent result type=', typeof recentRaw, 'notebooks=', notebooks.length);
+    if (DEBUG) console.log('reMarkable debug: recentRaw', JSON.stringify(recentRaw).slice(0, 2000));
+    console.log('🖊️ reMarkable sync: normalized notebooks=', notebooks.map(n => ({ id: n.id, name: n.name, pages: n.pages.length })));
 
     if (notebooks.length === 0) {
+      console.warn('⚠️ reMarkable sync: no notebooks found after normalization');
       return summary;
     }
 
@@ -74,12 +77,13 @@ class RemarkableService {
         }
 
         try {
+          if (DEBUG) console.log(`reMarkable debug: fetching page text notebook=${notebook.name} page=${page.label} key=${key}`);
           const text = await this.getPageText(notebook, page);
           if (text) {
             pageTexts.push({ key, label: page.label, text });
             processedKeys.push({ key, notebook: notebook.name, page: page.id });
           } else {
-            // テキストが空でも再解析を避けるため記録対象にする
+            console.warn(`⚠️ reMarkable sync: empty text for notebook=${notebook.name} page=${page.label} key=${key}`);
             processedKeys.push({ key, notebook: notebook.name, page: page.id, empty: true });
           }
         } catch (error) {
@@ -148,12 +152,20 @@ class RemarkableService {
   async getPageText(notebook, page) {
     // ① recent にテキストが含まれるケース
     if (page.text) {
+      if (DEBUG) console.log(`reMarkable debug: page text found in recent for ${notebook.name} p.${page.label}`);
       return page.text;
     }
 
     // ② remarkable_read でOCR済みテキストを取得
     const args = this.buildPageArgs(notebook, page);
+    if (DEBUG) console.log('reMarkable debug: remarkable_read args', args);
     const readResult = await remarkableMcp.read(args);
+
+    if (DEBUG) console.log('reMarkable debug: remarkable_read result', {
+      text: readResult.text ? '[text]' : '',
+      json: !!readResult.json,
+      images: readResult.images?.length || 0,
+    });
 
     if (readResult.text) {
       return readResult.text;
@@ -226,6 +238,11 @@ class RemarkableService {
     }
 
     const list = this.toArray(data, ['notebooks', 'documents', 'items', 'recent', 'results', 'data']);
+    if (DEBUG) console.log('reMarkable debug: normalizeRecent', {
+      dataType: typeof data,
+      dataKeys: data && typeof data === 'object' ? Object.keys(data) : null,
+      listLength: list.length,
+    });
     const notebooks = [];
 
     for (const raw of list) {
@@ -256,6 +273,11 @@ class RemarkableService {
       [];
 
     const arr = Array.isArray(rawPages) ? rawPages : [];
+    if (DEBUG) console.log('reMarkable debug: normalizePages', {
+      rawType: typeof rawPages,
+      rawPagesLength: arr.length,
+      rawKeys: rawPages && typeof rawPages === 'object' ? Object.keys(rawPages) : null,
+    });
     const pages = [];
 
     arr.forEach((p, index) => {
