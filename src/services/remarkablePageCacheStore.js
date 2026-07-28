@@ -84,6 +84,18 @@ class RemarkablePageCacheStore {
     return Object.keys(cache);
   }
 
+  static getPageNumbers(documentPath) {
+    const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key]) {
+      return [];
+    }
+    return Object.keys(cache[key])
+      .map(page => Number(page))
+      .filter(page => Number.isFinite(page))
+      .sort((a, b) => a - b);
+  }
+
   static hasCacheFile() {
     return fs.existsSync(CACHE_FILE);
   }

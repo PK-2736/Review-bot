@@ -32,11 +32,38 @@ class RemarkablePageSyncService {
     const changedPages = [];
     let skippedPages = 0;
     let registeredPages = 0;
-    let page = startPage;
 
+    if (!forceRegister) {
+      const cachedPages = RemarkablePageCacheStore.getPageNumbers(documentPath).filter(page => page >= startPage);
+      for (const page of cachedPages) {
+        const readArgs = { document: documentPath, page, include_ocr: true };
+        console.log('remarkable_read args:', JSON.stringify(readArgs));
+        const readResult = await remarkableMcp.read(readArgs);
+        const parsed = this.parseReadResult(readResult);
+        const text = this.resolvePageText(readResult, parsed);
+        const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
+        const contentHash = this.hashText(hashSource);
+        const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
+        const changed = existingEntry && existingEntry.hash !== contentHash;
+
+        if (changed) {
+          console.log('Page changed:', 'document=', documentPath, 'page=', page);
+          if (text) {
+            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+          }
+          RemarkablePageCacheStore.setPageEntry(documentPath, page, contentHash, new Date().toISOString());
+        } else {
+          console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
+          skippedPages += 1;
+        }
+      }
+
+      return { changedPages, skippedPages, registeredPages };
+    }
+
+    let page = startPage;
     while (true) {
       const readArgs = { document: documentPath, page, include_ocr: true };
-
       console.log('remarkable_read args:', JSON.stringify(readArgs));
       const readResult = await remarkableMcp.read(readArgs);
       const parsed = this.parseReadResult(readResult);
@@ -44,34 +71,23 @@ class RemarkablePageSyncService {
       const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
       const contentHash = this.hashText(hashSource);
       const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-      const hasCacheEntry = Boolean(existingEntry);
-      const changed = forceRegister || (hasCacheEntry && existingEntry.hash !== contentHash);
+      const changed = !existingEntry || existingEntry.hash !== contentHash;
 
-      if (forceRegister) {
-        registeredPages += 1;
-      }
-
-      if (!forceRegister && !hasCacheEntry) {
-        console.log('Skip unmanaged page:', `document=${documentPath}`, `page=${page}`);
-      } else if (changed) {
-        if (!forceRegister) {
-          console.log('Page changed:', 'document=', documentPath, 'page=', page);
-        }
-
+      registeredPages += 1;
+      if (changed) {
+        console.log('Page changed:', 'document=', documentPath, 'page=', page);
         if (text) {
           changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
         }
-
-        RemarkablePageCacheStore.setPageEntry(documentPath, page, contentHash, new Date().toISOString());
       } else {
         console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
         skippedPages += 1;
       }
+      RemarkablePageCacheStore.setPageEntry(documentPath, page, contentHash, new Date().toISOString());
 
       if (!parsed.more) {
         break;
       }
-
       page += 1;
     }
 
