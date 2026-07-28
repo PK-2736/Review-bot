@@ -70,23 +70,8 @@ class RemarkableService {
       }
 
       try {
-        const readArgs = { document: document.name, include_ocr: true };
-        console.log('🖊️ reMarkable sync: remarkable_read args', readArgs);
-        const readResult = await remarkableMcp.read(readArgs);
-        try {
-          console.log('🖊️ reMarkable sync: remarkable_read RAW:', JSON.stringify(readResult, null, 2));
-        } catch (error) {
-          console.dir(readResult, { depth: null });
-        }
-        console.log('🖊️ reMarkable sync: remarkable_read result', {
-          hasText: typeof readResult.text === 'string',
-          hasJson: typeof readResult.json === 'object',
-          hasResult: typeof readResult.json?.result === 'string',
-          images: readResult.images?.length || 0,
-        });
-
-        const text = this.extractOcrText(readResult);
-        console.log('🖊️ reMarkable sync: ocr text length=', text.length, 'document=', document.name);
+        const text = await this.getDocumentText(document);
+        console.log('🖊️ reMarkable sync: OCR total length =', text.length, 'document=', document.name);
 
         if (text) {
           groups.push({
@@ -161,25 +146,92 @@ class RemarkableService {
       .join('\n\n----------------------\n\n');
   }
 
-  extractOcrText(readResult) {
-    if (!readResult) return '';
+  async getDocumentText(document) {
+    const pages = [];
+    let page = 1;
+
+    while (true) {
+      const readArgs = { document: document.name, include_ocr: true };
+      if (page > 1) {
+        readArgs.page = page;
+      }
+
+      console.log('🖊️ reMarkable sync: remarkable_read args', readArgs);
+      const readResult = await remarkableMcp.read(readArgs);
+      try {
+        console.log('🖊️ reMarkable sync: remarkable_read RAW:', JSON.stringify(readResult, null, 2));
+      } catch (error) {
+        console.dir(readResult, { depth: null });
+      }
+
+      const parsed = this.parseReadResult(readResult);
+      console.log('🖊️ reMarkable sync: remarkable_read result', {
+        hasText: typeof readResult.text === 'string',
+        hasJson: typeof readResult.json === 'object',
+        hasResult: typeof readResult.json?.result === 'string',
+        hasParsedContent: typeof parsed.content === 'string',
+        hasParsedText: typeof parsed.text === 'string',
+        more: parsed.more,
+        images: readResult.images?.length || 0,
+      });
+
+      let text = '';
+      if (typeof readResult.text === 'string' && readResult.text.trim() !== '') {
+        text = readResult.text.trim();
+      } else if (readResult.json && typeof readResult.json.text === 'string' && readResult.json.text.trim() !== '') {
+        text = readResult.json.text.trim();
+      } else if (parsed.content) {
+        text = parsed.content;
+      } else if (parsed.text) {
+        text = parsed.text;
+      }
+
+      if (text) {
+        pages.push(text);
+      }
+
+      if (!parsed.more) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return pages.filter(Boolean).join('\n\n');
+  }
+
+  parseReadResult(readResult) {
+    const result = { text: '', content: '', more: false };
+    if (!readResult) return result;
+
     if (typeof readResult.text === 'string' && readResult.text.trim() !== '') {
-      return readResult.text;
+      result.text = readResult.text.trim();
     }
+
     if (readResult.json && typeof readResult.json.text === 'string' && readResult.json.text.trim() !== '') {
-      return readResult.json.text;
+      result.text = result.text || readResult.json.text.trim();
     }
+
     if (readResult.json && typeof readResult.json.result === 'string') {
       try {
         const parsed = JSON.parse(readResult.json.result);
-        if (parsed && typeof parsed.text === 'string') {
-          return parsed.text;
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.content === 'string' && parsed.content.trim() !== '') {
+            result.content = parsed.content.trim();
+          }
+          if (typeof parsed.text === 'string' && parsed.text.trim() !== '') {
+            result.text = result.text || parsed.text.trim();
+          }
+          if (parsed.more === true) {
+            result.more = true;
+          }
         }
       } catch (error) {
         if (DEBUG) console.log('reMarkable debug: parse readResult.json.result failed', error.message);
       }
     }
-    return '';
+
+    return result;
   }
 
   /**
