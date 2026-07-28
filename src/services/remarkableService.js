@@ -94,7 +94,11 @@ class RemarkableService {
       console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
 
       try {
-        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, 1);
+        const baseline = RemarkablePageCacheStore.getDocumentBaseline(document.path);
+        const startPage = Math.max(1, baseline + 1);
+        console.log('remarkable sync document baseline:', { documentPath: document.path, baseline, startPage });
+
+        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, startPage);
         summary.changedPages += result.changedPages.length;
         summary.skippedPages += result.skippedPages;
 

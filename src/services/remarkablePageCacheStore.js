@@ -102,14 +102,19 @@ class RemarkablePageCacheStore {
 
     const pageNumbers = Object.keys(cache[key])
       .filter(page => !page.startsWith('_'))
-      .map(page => Number(page))
+      .map(page => Number(String(page).trim()))
       .filter(page => Number.isFinite(page));
 
     if (pageNumbers.length === 0) {
       return 0;
     }
 
-    return Math.max(...pageNumbers);
+    const maxPage = Math.max(...pageNumbers);
+    if (process.env.DEBUG_REMARKABLE === 'true') {
+      console.log('RemarkablePageCacheStore.getDocumentBaseline', { key, explicitBaseline, pageNumbers, maxPage });
+    }
+
+    return maxPage;
   }
 
   static deletePageEntry(documentPath, page) {

@@ -30,10 +30,12 @@ class RemarkablePageSyncService {
     this.ensureCacheFileExists();
     const baseline = RemarkablePageCacheStore.getDocumentBaseline(documentPath);
     const requestedStart = Math.max(1, Number(startPage) || 1);
-    if (requestedStart > baseline) {
+    const effectiveStart = Math.max(requestedStart, baseline + 1);
+    console.log('remarkable sync baseline:', { documentPath, baseline, requestedStart, effectiveStart });
+    if (effectiveStart <= baseline) {
       return Promise.resolve({ changedPages: [], skippedPages: 0, registeredPages: 0 });
     }
-    return this.processPages(documentPath, requestedStart, { forceRegister: false, endPage: baseline });
+    return this.processPages(documentPath, effectiveStart, { forceRegister: false });
   }
 
   normalizeText(text) {
