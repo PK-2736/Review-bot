@@ -84,10 +84,12 @@ class RemarkableService {
 
     for (const document of documents) {
       const key = document.id;
+      const normalizedKey = RemarkablePageCacheStore.normalizeDocumentPath(document.path);
       if (!RemarkablePageCacheStore.hasDocument(document.path)) {
-        console.log('Skip document (no cache):', `document=${document.path}`);
+        console.log('Skip document (no cache):', `document=${document.path}`, `normalizedKey=${normalizedKey}`);
         continue;
       }
+      console.log('Cache matched:', `document=${document.path}`, `normalizedKey=${normalizedKey}`);
 
       console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
 

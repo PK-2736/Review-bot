@@ -47,26 +47,36 @@ class RemarkablePageCacheStore {
     }
   }
 
+  static normalizeDocumentPath(documentPath) {
+    if (documentPath == null) {
+      return '';
+    }
+    return String(documentPath).trim().replace(/^\/+/, '').replace(/\/+$/, '');
+  }
+
   static getPageEntry(documentPath, page) {
     const cache = this.load();
+    const key = this.normalizeDocumentPath(documentPath);
     const pageKey = String(page);
-    if (!cache[documentPath] || cache[documentPath][pageKey] == null) {
+    if (!cache[key] || cache[key][pageKey] == null) {
       return null;
     }
-    return cache[documentPath][pageKey];
+    return cache[key][pageKey];
   }
 
   static setPageEntry(documentPath, page, hash, updatedAt) {
     const cache = this.load();
-    if (!cache[documentPath]) {
-      cache[documentPath] = {};
+    const key = this.normalizeDocumentPath(documentPath);
+    if (!cache[key]) {
+      cache[key] = {};
     }
-    cache[documentPath][String(page)] = { hash, updatedAt };
+    cache[key][String(page)] = { hash, updatedAt };
   }
 
   static hasDocument(documentPath) {
     const cache = this.load();
-    return cache[documentPath] != null && Object.keys(cache[documentPath]).length > 0;
+    const key = this.normalizeDocumentPath(documentPath);
+    return cache[key] != null && Object.keys(cache[key]).length > 0;
   }
 
   static getCachedDocuments() {

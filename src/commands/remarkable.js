@@ -158,7 +158,9 @@ async function handleCache(interaction) {
 
     const documentPath = interaction.options.getString('document');
     const page = interaction.options.getInteger('page');
+    const normalizedKey = RemarkablePageCacheStore.normalizeDocumentPath(documentPath);
 
+    console.log('Cache key:', `document=${documentPath}`, `normalizedKey=${normalizedKey}`);
     await interaction.deferReply();
 
     const result = await RemarkablePageSyncService.initializeCacheForDocument(documentPath, page);
