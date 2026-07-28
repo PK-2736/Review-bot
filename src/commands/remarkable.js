@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const remarkableService = require('../services/remarkableService');
-const RemarkableCacheStore = require('../services/remarkableCacheStore');
 const RemarkablePageCacheStore = require('../services/remarkablePageCacheStore');
 const remarkableMcp = require('../services/remarkableMcp');
 const config = require('../config');
@@ -38,11 +37,7 @@ module.exports = {
         .setName('sync')
         .setDescription('今日更新されたノートを解析してTodoistへ登録します（管理者のみ）')
     )
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('list')
-        .setDescription('直近で解析したノート・ページを表示します')
-    )
+    
     .addSubcommand(subcommand =>
       subcommand
         .setName('cache-list')
@@ -73,8 +68,6 @@ module.exports = {
 
     if (subcommand === 'sync') {
       await handleSync(interaction);
-    } else if (subcommand === 'list') {
-      await handleList(interaction);
     } else if (subcommand === 'cache-list') {
       await handleCacheList(interaction);
     } else if (subcommand === 'cache') {
@@ -220,67 +213,7 @@ async function handleCache(interaction) {
   }
 }
 
-/**
- * 直近で解析したノート・ページを表示
- */
-async function handleList(interaction) {
-  try {
-    await interaction.deferReply();
-
-    const items = RemarkableCacheStore.getAll();
-
-    if (items.length === 0) {
-      const embed = new EmbedBuilder()
-        .setColor('#808080')
-        .setTitle('🖊️ reMarkable 解析履歴')
-        .setDescription('まだ解析したノートがありません。\n\n`/remarkable sync` を実行してください。')
-        .setTimestamp();
-
-      return await interaction.editReply({ embeds: [embed] });
-    }
-
-    // ノートごとにページ数を集計
-    const byNotebook = new Map();
-    for (const item of items) {
-      const name = item.notebook || '(無題ノート)';
-      byNotebook.set(name, (byNotebook.get(name) || 0) + 1);
-    }
-
-    // 直近の処理日時
-    const sorted = [...items].sort((a, b) => {
-      const ta = a.processedAt ? new Date(a.processedAt).getTime() : 0;
-      const tb = b.processedAt ? new Date(b.processedAt).getTime() : 0;
-      return tb - ta;
-    });
-    const latest = sorted[0] && sorted[0].processedAt
-      ? new Date(sorted[0].processedAt).toLocaleString('ja-JP')
-      : '不明';
-
-    const embed = new EmbedBuilder()
-      .setColor('#2196F3')
-      .setTitle('🖊️ reMarkable 解析履歴')
-      .setDescription(`解析済みページ: ${items.length}件`)
-      .setTimestamp();
-
-    [...byNotebook.entries()].slice(0, 15).forEach(([name, count]) => {
-      embed.addFields({ name, value: `${count}ページ`, inline: true });
-    });
-
-    embed.addFields(
-      { name: '🕒 最終解析', value: latest, inline: false },
-      {
-        name: '⚙️ 同期設定',
-        value: `自動実行: ${config.remarkable.enabled ? '有効' : '無効'}\n実行時刻: ${config.remarkable.syncTime}`,
-        inline: false,
-      }
-    );
-
-    await interaction.editReply({ embeds: [embed] });
-  } catch (error) {
-    console.error('reMarkable履歴取得エラー:', error);
-    await interaction.editReply({ content: '❌ 解析履歴の取得に失敗しました。' });
-  }
-}
+// `list` subcommand removed per request
 
 /**
  * 保存されているページキャッシュ一覧を表示

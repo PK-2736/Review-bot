@@ -216,18 +216,44 @@ class TodoistService {
     try {
       const projectsResponse = await this.api.getProjects();
       const projects = normalizeProjectsResponse(projectsResponse);
-      // Search existing projects for exact name match
-      const reviewProject = projects.find((p) => p && p.name === projectName);
-      if (reviewProject) {
-        console.log('Todoist: existing project found, reusing', { projectName, projectId: reviewProject.id });
-        this.projectCache.set(projectName, reviewProject.id);
+      // Search existing projects for exact and fuzzy matches
+      const projectNameStr = String(projectName || '').trim();
+      const reviewProjectExact = projects.find((p) => p && p.name === projectNameStr);
+      if (reviewProjectExact) {
+        console.log('Todoist: existing project found (exact), reusing', { projectName: projectNameStr, projectId: reviewProjectExact.id });
+        this.projectCache.set(projectName, reviewProjectExact.id);
+        return this.projectCache.get(projectName);
+      }
+
+      // case-insensitive exact
+      const lower = projectNameStr.toLowerCase();
+      const reviewProjectCi = projects.find((p) => p && String(p.name).toLowerCase() === lower);
+      if (reviewProjectCi) {
+        console.log('Todoist: existing project found (case-insensitive exact), reusing', { projectName: projectNameStr, projectId: reviewProjectCi.id });
+        this.projectCache.set(projectName, reviewProjectCi.id);
+        return this.projectCache.get(projectName);
+      }
+
+      // contains (case-insensitive)
+      const reviewProjectContains = projects.find((p) => p && String(p.name).toLowerCase().includes(lower));
+      if (reviewProjectContains) {
+        console.log('Todoist: existing project found (contains), reusing', { projectName: projectNameStr, projectId: reviewProjectContains.id, matchedName: reviewProjectContains.name });
+        this.projectCache.set(projectName, reviewProjectContains.id);
+        return this.projectCache.get(projectName);
+      }
+
+      // startsWith (case-insensitive)
+      const reviewProjectStarts = projects.find((p) => p && String(p.name).toLowerCase().startsWith(lower));
+      if (reviewProjectStarts) {
+        console.log('Todoist: existing project found (startsWith), reusing', { projectName: projectNameStr, projectId: reviewProjectStarts.id, matchedName: reviewProjectStarts.name });
+        this.projectCache.set(projectName, reviewProjectStarts.id);
         return this.projectCache.get(projectName);
       }
 
       // Log reason why not found (list size may be large; log names only)
       try {
         const projectNames = projects.map(p => (p && p.name) ? p.name : String(p));
-        console.warn('Todoist: project not found by name', { searchedName: projectName, totalProjects: projectNames.length, projectNamesSample: projectNames.slice(0, 50) });
+        console.warn('Todoist: project not found by name', { searchedName: projectNameStr, totalProjects: projectNames.length, projectNamesSample: projectNames.slice(0, 50) });
       } catch (e) {
         console.warn('Todoist: project not found, and failed to enumerate projects for logging', e.message);
       }
@@ -244,14 +270,26 @@ class TodoistService {
 
       // Try creating new project (only if we didn't detect a configured limit or not exceeded)
       try {
-        const newProject = await this.api.addProject({ name: projectName });
-        console.log('Todoist: created new project', { projectName, projectId: newProject.id });
+        const newProject = await this.api.addProject({ name: projectNameStr });
+        console.log('Todoist: created new project', { projectName: projectNameStr, projectId: newProject.id });
         this.projectCache.set(projectName, newProject.id);
         return this.projectCache.get(projectName);
       } catch (createError) {
-        console.error('Todoist: failed to create project', { projectName, error: createError });
-        // Attach extra debug info
-        createError.message = `Failed to create Todoist project '${projectName}': ${createError.message}`;
+        // If Todoist reports project limit reached, throw a clear error code
+        try {
+          const tag = createError && createError.responseData && createError.responseData.error_tag;
+          if (tag === 'MAX_PROJECTS_LIMIT_REACHED' || (createError.httpStatusCode === 403 && createError.responseData && typeof createError.responseData.error === 'string' && createError.responseData.error.includes('Maximum number of projects'))) {
+            const err = new Error(`Todoist project limit reached while creating '${projectNameStr}'`);
+            err.code = 'TODOIST_PROJECT_LIMIT_REACHED';
+            console.error('Todoist: project creation aborted due to account limit', { projectName: projectNameStr, response: createError.responseData });
+            throw err;
+          }
+        } catch (e) {
+          // fallthrough
+        }
+
+        console.error('Todoist: failed to create project', { projectName: projectNameStr, error: createError });
+        createError.message = `Failed to create Todoist project '${projectNameStr}': ${createError.message}`;
         throw createError;
       }
     } catch (error) {
@@ -259,13 +297,6 @@ class TodoistService {
       throw error;
     }
   }
-
-  /**
-   * 復習タスクを作成
-   * @param {string} content - タスクの内容
-   * @param {Date} dueDate - 期限日
-   * @param {number} priority - 優先度（1-4）
-   */
   async createReviewTask(content, dueDate, priority = 1) {
     try {
       const projectId = await this.getOrCreateProject();
