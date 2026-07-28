@@ -44,13 +44,16 @@ class RemarkablePageSyncService {
       const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
       const contentHash = this.hashText(hashSource);
       const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-      const changed = forceRegister || !existingEntry || existingEntry.hash !== contentHash;
+      const hasCacheEntry = Boolean(existingEntry);
+      const changed = forceRegister || (hasCacheEntry && existingEntry.hash !== contentHash);
 
       if (forceRegister) {
         registeredPages += 1;
       }
 
-      if (changed) {
+      if (!forceRegister && !hasCacheEntry) {
+        console.log('Skip unmanaged page:', `document=${documentPath}`, `page=${page}`);
+      } else if (changed) {
         if (!forceRegister) {
           console.log('Page changed:', 'document=', documentPath, 'page=', page);
         }
