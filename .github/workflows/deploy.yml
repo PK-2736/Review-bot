@@ -137,7 +137,7 @@ jobs:
             echo "REMARKABLE_MCP_URL=${{ secrets.REMARKABLE_MCP_URL || 'https://mcp.recrubo.net' }}" >> .env
             echo "REMARKABLE_MCP_TOKEN=${{ secrets.REMARKABLE_MCP_TOKEN || '' }}" >> .env
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY || '' }}" >> .env
-            echo "GEMINI_MODEL=${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}" >> .env
+            echo "GEMINI_MODEL=${{ secrets.GEMINI_MODEL || 'gemini-3.5-flash' }}" >> .env
             echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
             echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
             echo "GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" >> .env
