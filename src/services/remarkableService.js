@@ -101,23 +101,18 @@ class RemarkableService {
         if (result.changedPages.length > 0) {
           groups.push({
             name: document.name,
+            documentPath: document.path,
             pages: result.changedPages.map(pageData => ({
               key: `${key}:${pageData.page}`,
               document: document.name,
+              documentPath: document.path,
               page: pageData.page,
               label: String(pageData.page),
               content: pageData.content,
               text: pageData.content,
+              hash: pageData.hash,
             })),
           });
-
-          for (const pageData of result.changedPages) {
-            processedKeys.push({
-              key: `${key}:${pageData.page}`,
-              notebook: document.name,
-              page: String(pageData.page),
-            });
-          }
         }
       } catch (error) {
         console.error(`ドキュメント取得失敗 (${document.name}):`, error.message);
@@ -125,7 +120,6 @@ class RemarkableService {
       }
     }
 
-    RemarkablePageCacheStore.save();
     console.log('🖊️ reMarkable sync: Changed pages=', summary.changedPages);
     console.log('🖊️ reMarkable sync: Skipped pages=', summary.skippedPages);
     console.log('🖊️ reMarkable sync: groups count=', groups.length);
@@ -134,6 +128,7 @@ class RemarkableService {
     summary.geminiRequests = groups.length;
 
     if (groups.length === 0) {
+      RemarkablePageCacheStore.save();
       this.commitCache(processedKeys);
       return summary;
     }
@@ -145,6 +140,8 @@ class RemarkableService {
     summary.geminiRequests = groups.length;
 
     const today = new Date();
+
+    const successfulPages = [];
 
     for (const notebook of plan.notebooks) {
       const projectName = `${config.remarkable.projectPrefix || ''}${notebook.name}`;
@@ -168,12 +165,27 @@ class RemarkableService {
           });
           summary.created += 1;
           summary.todoistCreated += 1;
+
+          const pageGroup = groups.find(g => g.name === notebook.name);
+          if (pageGroup) {
+            pageGroup.pages.forEach(pageData => {
+              if (!successfulPages.some(sp => sp.documentPath === pageData.documentPath && sp.page === pageData.page)) {
+                successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page, hash: pageData.hash });
+              }
+            });
+          }
         } catch (error) {
           console.error(`Todoist登録失敗 (${notebook.name} / ${task.title}):`, error.message);
           summary.errors.push(`Todoist: ${notebook.name} - ${error.message}`);
         }
       }
     }
+
+    // 成功したページのみキャッシュを更新
+    for (const pageData of successfulPages) {
+      RemarkablePageCacheStore.setPageEntry(pageData.documentPath, pageData.page, pageData.hash, new Date().toISOString());
+    }
+    RemarkablePageCacheStore.save();
 
     summary.notebooks = plan.notebooks.length;
 

@@ -44,14 +44,25 @@ class RemarkablePageSyncService {
         const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
         const contentHash = this.hashText(hashSource);
         const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-        const changed = existingEntry && existingEntry.hash !== contentHash;
+        const previousHash = existingEntry ? existingEntry.hash : null;
+        const same = previousHash === contentHash;
+        const content = text || '';
+        console.log({
+          page,
+          previousHash,
+          previousHashSource: existingEntry ? 'cache' : 'none',
+          currentHash: contentHash,
+          same,
+          contentLength: content.length,
+          preview: content.slice(0, 200),
+        });
+        const changed = existingEntry && !same;
 
         if (changed) {
           console.log('Page changed:', 'document=', documentPath, 'page=', page);
           if (text) {
-            changedPages.push({ document: documentPath, page, content: text, hash: contentHash });
+            changedPages.push({ document: documentPath, documentPath, page, content: text, hash: contentHash });
           }
-          RemarkablePageCacheStore.setPageEntry(documentPath, page, contentHash, new Date().toISOString());
         } else {
           console.log('Page unchanged:', 'document=', documentPath, 'page=', page);
           skippedPages += 1;
@@ -71,7 +82,19 @@ class RemarkablePageSyncService {
       const hashSource = parsed.content !== '' ? parsed.content : parsed.text;
       const contentHash = this.hashText(hashSource);
       const existingEntry = RemarkablePageCacheStore.getPageEntry(documentPath, page);
-      const changed = !existingEntry || existingEntry.hash !== contentHash;
+      const previousHash = existingEntry ? existingEntry.hash : null;
+      const same = previousHash === contentHash;
+      const content = text || '';
+      console.log({
+        page,
+        previousHash,
+        previousHashSource: existingEntry ? 'cache' : 'none',
+        currentHash: contentHash,
+        same,
+        contentLength: content.length,
+        preview: content.slice(0, 200),
+      });
+      const changed = !existingEntry || !same;
 
       registeredPages += 1;
       if (changed) {
