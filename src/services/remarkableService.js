@@ -143,41 +143,48 @@ class RemarkableService {
 
     const successfulPages = [];
 
+    // Create a single Todoist task per notebook, consolidating multiple Gemini tasks
     for (const notebook of plan.notebooks) {
       const projectName = `${config.remarkable.projectPrefix || ''}${notebook.name}`;
       summary.notebookNames.push(notebook.name);
 
-      for (const task of notebook.tasks) {
-        const dueDate = new Date(today);
-        dueDate.setDate(today.getDate() + task.due_days);
+      const pageNumbers = groups.find(g => g.name === notebook.name)?.pages.map(p => Number(p.page)) || [];
+      const pageHeader = formatPageRangeForDescription(pageNumbers);
 
-        const pageNumbers = groups.find(g => g.name === notebook.name)?.pages.map(p => Number(p.page)) || [];
-        const pageHeader = formatPageRangeForDescription(pageNumbers);
-        const description = `${pageHeader ? pageHeader + '\n\n' : ''}${notebook.name}\n\n${task.title}`;
+      // Combine Gemini tasks into one description/content
+      const combinedBody = notebook.tasks.map(t => t.title).join('\n\n');
+      const description = `${pageHeader ? pageHeader + '\n\n' : ''}${notebook.name}\n\n${combinedBody}`;
 
-        try {
-          await todoistService.createRemarkableTask({
-            projectName,
-            content: task.title,
-            description,
-            dueDate,
-            priority: task.priority,
+      // Choose earliest due date and highest priority among tasks
+      const minDueDays = Math.min(...notebook.tasks.map(t => t.due_days || 0));
+      const maxPriority = Math.max(...notebook.tasks.map(t => t.priority || 1));
+      const dueDate = new Date(today);
+      dueDate.setDate(today.getDate() + minDueDays);
+
+      const content = notebook.tasks.map(t => t.title).join(' / ');
+
+      try {
+        await todoistService.createRemarkableTask({
+          projectName,
+          content: content || notebook.name,
+          description,
+          dueDate,
+          priority: maxPriority,
+        });
+        summary.created += 1;
+        summary.todoistCreated += 1;
+
+        const pageGroup = groups.find(g => g.name === notebook.name);
+        if (pageGroup) {
+          pageGroup.pages.forEach(pageData => {
+            if (!successfulPages.some(sp => sp.documentPath === pageData.documentPath && sp.page === pageData.page)) {
+              successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page, hash: pageData.hash });
+            }
           });
-          summary.created += 1;
-          summary.todoistCreated += 1;
-
-          const pageGroup = groups.find(g => g.name === notebook.name);
-          if (pageGroup) {
-            pageGroup.pages.forEach(pageData => {
-              if (!successfulPages.some(sp => sp.documentPath === pageData.documentPath && sp.page === pageData.page)) {
-                successfulPages.push({ documentPath: pageData.documentPath, page: pageData.page, hash: pageData.hash });
-              }
-            });
-          }
-        } catch (error) {
-          console.error(`Todoist登録失敗 (${notebook.name} / ${task.title}):`, error.message);
-          summary.errors.push(`Todoist: ${notebook.name} - ${error.message}`);
         }
+      } catch (error) {
+        console.error(`Todoist登録失敗 (${notebook.name}):`, error.message);
+        summary.errors.push(`Todoist: ${notebook.name} - ${error.message}`);
       }
     }
 

@@ -5,6 +5,7 @@ const RemarkableCacheStore = require('../services/remarkableCacheStore');
 const RemarkablePageCacheStore = require('../services/remarkablePageCacheStore');
 const remarkableMcp = require('../services/remarkableMcp');
 const config = require('../config');
+const { formatPageRange } = require('../services/remarkableCacheUtils');
 
 // Autocomplete: provide document choices from MCP
 async function autocomplete(interaction) {
@@ -45,6 +46,11 @@ module.exports = {
     )
     .addSubcommand(subcommand =>
       subcommand
+        .setName('cache-list')
+        .setDescription('保存されているページキャッシュ一覧を表示します（管理者のみ）')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
         .setName('cache')
         .setDescription('ページキャッシュを初期化します。先頭ページ以降を /cache します。')
         .addStringOption(option =>
@@ -70,6 +76,8 @@ module.exports = {
       await handleSync(interaction);
     } else if (subcommand === 'list') {
       await handleList(interaction);
+    } else if (subcommand === 'cache-list') {
+      await handleCacheList(interaction);
     } else if (subcommand === 'cache') {
       await handleCache(interaction);
     }
@@ -272,5 +280,48 @@ async function handleList(interaction) {
   } catch (error) {
     console.error('reMarkable履歴取得エラー:', error);
     await interaction.editReply({ content: '❌ 解析履歴の取得に失敗しました。' });
+  }
+}
+
+/**
+ * 保存されているページキャッシュ一覧を表示
+ */
+async function handleCacheList(interaction) {
+  try {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return await interaction.reply({ content: '❌ このコマンドは管理者のみが実行できます。', ephemeral: true });
+    }
+
+    await interaction.deferReply();
+
+    const docs = RemarkablePageCacheStore.getCachedDocuments();
+    if (!docs || docs.length === 0) {
+      const embed = new EmbedBuilder()
+        .setColor('#808080')
+        .setTitle('🗂️ ページキャッシュ一覧')
+        .setDescription('ページキャッシュは登録されていません。`/remarkable cache` で初期化してください。')
+        .setTimestamp();
+      return await interaction.editReply({ embeds: [embed] });
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor('#FF9800')
+      .setTitle('🗂️ ページキャッシュ一覧')
+      .setTimestamp();
+
+    let totalPages = 0;
+    for (const doc of docs) {
+      const pages = RemarkablePageCacheStore.getPageNumbers(doc);
+      totalPages += pages.length;
+      const range = formatPageRange(pages);
+      embed.addFields({ name: doc, value: `${pages.length}ページ${range ? ` (${range})` : ''}`, inline: false });
+    }
+
+    embed.addFields({ name: '合計', value: `${docs.length}ドキュメント / ${totalPages}ページ`, inline: false });
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('cache-list 取得エラー:', error);
+    await interaction.editReply({ content: '❌ キャッシュ一覧の取得に失敗しました。' });
   }
 }
