@@ -79,8 +79,16 @@ class RemarkableService {
     const groups = [];
     const processedKeys = [];
 
+    const cachedDocuments = RemarkablePageCacheStore.getCachedDocuments();
+    console.log('Cache found:', cachedDocuments.map(doc => `document=${doc}`).join(', '));
+
     for (const document of documents) {
       const key = document.id;
+      if (!RemarkablePageCacheStore.hasDocument(document.path)) {
+        console.log('Skip document (no cache):', `document=${document.path}`);
+        continue;
+      }
+
       console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
 
       try {

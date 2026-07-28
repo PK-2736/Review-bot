@@ -64,6 +64,16 @@ class RemarkablePageCacheStore {
     cache[documentPath][String(page)] = { hash, updatedAt };
   }
 
+  static hasDocument(documentPath) {
+    const cache = this.load();
+    return cache[documentPath] != null && Object.keys(cache[documentPath]).length > 0;
+  }
+
+  static getCachedDocuments() {
+    const cache = this.load();
+    return Object.keys(cache);
+  }
+
   static hasCacheFile() {
     return fs.existsSync(CACHE_FILE);
   }

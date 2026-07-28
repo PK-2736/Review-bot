@@ -35,10 +35,7 @@ class RemarkablePageSyncService {
     let page = startPage;
 
     while (true) {
-      const readArgs = { document: documentPath, include_ocr: true };
-      if (page > 1) {
-        readArgs.page = page;
-      }
+      const readArgs = { document: documentPath, page, include_ocr: true };
 
       console.log('remarkable_read args:', JSON.stringify(readArgs));
       const readResult = await remarkableMcp.read(readArgs);
