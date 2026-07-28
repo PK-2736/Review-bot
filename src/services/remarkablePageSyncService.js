@@ -18,9 +18,10 @@ class RemarkablePageSyncService {
 
   async initializeCacheForDocument(documentPath, startPage) {
     RemarkablePageCacheStore.ensureCacheFile();
-    RemarkablePageCacheStore.setDocumentBaseline(documentPath, Number(startPage));
-    const startFrom = Math.max(1, Number(startPage) + 1);
+    const startFrom = Math.max(1, Number(startPage) || 1);
     const result = await this.processPages(documentPath, startFrom, { forceRegister: true });
+    const baseline = result.lastPage || startFrom;
+    RemarkablePageCacheStore.setDocumentBaseline(documentPath, baseline);
     RemarkablePageCacheStore.save();
     return result;
   }
@@ -29,8 +30,10 @@ class RemarkablePageSyncService {
     this.ensureCacheFileExists();
     const baseline = RemarkablePageCacheStore.getDocumentBaseline(documentPath);
     const requestedStart = Math.max(1, Number(startPage) || 1);
-    const effectiveStart = Math.max(requestedStart, baseline + 1);
-    return this.processPages(documentPath, effectiveStart, { forceRegister: false });
+    if (requestedStart > baseline) {
+      return Promise.resolve({ changedPages: [], skippedPages: 0, registeredPages: 0 });
+    }
+    return this.processPages(documentPath, requestedStart, { forceRegister: false, endPage: baseline });
   }
 
   normalizeText(text) {
@@ -65,21 +68,25 @@ class RemarkablePageSyncService {
   }
 
   async processPages(documentPath, startPage, options = {}) {
-    const { forceRegister = false } = options;
+    const { forceRegister = false, endPage = null } = options;
     const changedPages = [];
     let skippedPages = 0;
     let registeredPages = 0;
+    const pagesSeen = [];
 
     if (!forceRegister) {
-      // Read all pages sequentially starting from startPage.
-      // Treat pages not present in cache as new pages (will be returned in changedPages),
-      // but do NOT update the cache here — cache is updated only after successful Todoist registration.
-      const cachedPages = RemarkablePageCacheStore.getPageNumbers(documentPath).filter(page => page >= startPage);
-      const cachedSet = new Set(cachedPages.map(p => Number(p)));
+      const requestedStart = Math.max(1, Number(startPage) || 1);
+      const requestedEnd = endPage != null ? Number(endPage) : null;
+      if (requestedEnd != null && requestedStart > requestedEnd) {
+        return { changedPages, skippedPages, registeredPages };
+      }
 
-      const pagesSeen = [];
-      let page = startPage;
+      let page = requestedStart;
       while (true) {
+        if (requestedEnd != null && page > requestedEnd) {
+          break;
+        }
+
         const readArgs = { document: documentPath, page, include_ocr: true };
         console.log('remarkable_read args:', JSON.stringify(readArgs));
         const readResult = await remarkableMcp.read(readArgs);
@@ -147,7 +154,6 @@ class RemarkablePageSyncService {
         page += 1;
       }
 
-      // Remove stale cached pages that no longer exist in the document
       try {
         RemarkablePageCacheStore.removeStalePages(documentPath, pagesSeen);
       } catch (err) {
@@ -158,6 +164,7 @@ class RemarkablePageSyncService {
     }
 
     let page = startPage;
+    let lastPage = startPage;
     while (true) {
       const readArgs = { document: documentPath, page, include_ocr: true };
       console.log('remarkable_read args:', JSON.stringify(readArgs));
@@ -211,6 +218,8 @@ class RemarkablePageSyncService {
         skippedPages += 1;
       }
       RemarkablePageCacheStore.setPageEntry(documentPath, page, normalizedHash, new Date().toISOString());
+      pagesSeen.push(page);
+      lastPage = page;
 
       if (!parsed.more) {
         break;
@@ -218,7 +227,7 @@ class RemarkablePageSyncService {
       page += 1;
     }
 
-    return { changedPages, skippedPages, registeredPages };
+    return { changedPages, skippedPages, registeredPages, lastPage };
   }
 
   resolvePageText(readResult, parsed) {

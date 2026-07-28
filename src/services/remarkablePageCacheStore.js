@@ -91,10 +91,25 @@ class RemarkablePageCacheStore {
   static getDocumentBaseline(documentPath) {
     const cache = this.load();
     const key = this.normalizeDocumentPath(documentPath);
-    if (!cache[key] || cache[key]._cachedTo == null) {
+    if (!cache[key]) {
       return 0;
     }
-    return Number(cache[key]._cachedTo) || 0;
+
+    const explicitBaseline = cache[key]._cachedTo;
+    if (explicitBaseline != null && Number.isFinite(Number(explicitBaseline)) && Number(explicitBaseline) > 0) {
+      return Number(explicitBaseline);
+    }
+
+    const pageNumbers = Object.keys(cache[key])
+      .filter(page => !page.startsWith('_'))
+      .map(page => Number(page))
+      .filter(page => Number.isFinite(page));
+
+    if (pageNumbers.length === 0) {
+      return 0;
+    }
+
+    return Math.max(...pageNumbers);
   }
 
   static deletePageEntry(documentPath, page) {
