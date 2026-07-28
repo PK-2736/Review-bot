@@ -523,7 +523,7 @@ client.commands.set('remarkable', remarkableCommand);
 
 * MCP URL: `https://mcp.recrubo.net`
 * 利用ツール: `remarkable_recent` / `remarkable_read` / `remarkable_image`
-* 認証トークンを `REMARKABLE_MCP_TOKEN` に設定
+* `REMARKABLE_MCP_TOKEN` は、MCP サーバーがトークン認証を要求する場合のみ設定します
 * **reMarkable 認証・データ取得・Google Vision OCR は MCP サーバー側で完了**する。
   bot は MCP へ接続して **OCR 済みテキスト**を受け取るだけなので、
   `GOOGLE_VISION_API_KEY` の設定は bot 側では不要（MCP サーバー側で管理）。

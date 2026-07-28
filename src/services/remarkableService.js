@@ -23,11 +23,7 @@ class RemarkableService {
    * 必要な認証情報がそろっているか
    */
   isConfigured() {
-    return (
-      remarkableMcp.isConfigured() &&
-      Boolean(config.remarkable.mcp.token) &&
-      geminiService.isConfigured()
-    );
+    return remarkableMcp.isConfigured() && geminiService.isConfigured();
   }
 
   /**
@@ -36,7 +32,6 @@ class RemarkableService {
   missingConfig() {
     const missing = [];
     if (!remarkableMcp.isConfigured()) missing.push('REMARKABLE_MCP_URL');
-    if (!config.remarkable.mcp.token) missing.push('REMARKABLE_MCP_TOKEN');
     if (!geminiService.isConfigured()) missing.push('GEMINI_API_KEY');
     return missing;
   }
