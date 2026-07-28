@@ -6,6 +6,29 @@ const RemarkablePageCacheStore = require('../services/remarkablePageCacheStore')
 const remarkableMcp = require('../services/remarkableMcp');
 const config = require('../config');
 
+// Autocomplete: provide document choices from MCP
+module.exports.autocomplete = async (interaction) => {
+  try {
+    if (!remarkableMcp.isConfigured()) {
+      return await interaction.respond([]);
+    }
+
+    const focused = interaction.options.getFocused();
+    const recentRaw = await remarkableMcp.recent({});
+    const docs = remarkableService.normalizeRecent(recentRaw);
+
+    const choices = docs.map(d => ({ name: `${d.name} (${d.path})`, value: d.path }));
+    const filtered = focused
+      ? choices.filter(c => c.name.toLowerCase().includes(String(focused).toLowerCase()) || c.value.toLowerCase().includes(String(focused).toLowerCase()))
+      : choices;
+
+    await interaction.respond(filtered.slice(0, 25));
+  } catch (error) {
+    console.error('remarkable autocomplete error:', error.message);
+    try { await interaction.respond([]); } catch (e) {}
+  }
+};
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('remarkable')
@@ -25,10 +48,11 @@ module.exports = {
         .setName('cache')
         .setDescription('ページキャッシュを初期化します。先頭ページ以降を /cache します。')
         .addStringOption(option =>
-          option
-            .setName('document')
-            .setDescription('初期化する reMarkable ドキュメントのパス')
-            .setRequired(true)
+            option
+              .setName('document')
+              .setDescription('初期化する reMarkable ドキュメントのパス (選択してください)')
+              .setRequired(true)
+              .setAutocomplete(true)
         )
         .addIntegerOption(option =>
           option
