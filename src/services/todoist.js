@@ -352,16 +352,46 @@ class TodoistService {
   async createRemarkableTask(payload) {
     try {
       const projectId = await this.getOrCreateProjectByName(payload.projectName);
-      const task = await this.api.addTask({
+      // Create main task
+      const dueDateStr = formatLocalDate(payload.dueDate instanceof Date ? payload.dueDate : new Date(payload.dueDate));
+      const mainTask = await this.api.addTask({
         content: payload.content,
         description: payload.description,
         projectId,
-        dueDate: payload.dueDate.toISOString().split('T')[0],
+        dueDate: dueDateStr,
         priority: payload.priority || 1,
         labels: ['復習', 'reMarkable'],
       });
 
-      return task;
+      const created = { main: mainTask, followUps: [] };
+
+      // By default, create follow-up tasks at +1 day, +7 days, +30 days relative to the main due date.
+      if (payload.createFollowUps !== false) {
+        const offsets = [1, 7, 30];
+        for (const offset of offsets) {
+          try {
+            const d = new Date(payload.dueDate instanceof Date ? payload.dueDate : new Date(payload.dueDate));
+            d.setDate(d.getDate() + offset);
+            const fDue = formatLocalDate(d);
+            const fContent = `${payload.content} (復習: +${offset}日)`;
+            const fTask = await this.api.addTask({
+              content: fContent,
+              description: payload.description,
+              projectId,
+              dueDate: fDue,
+              priority: payload.priority || 1,
+              labels: ['復習', 'reMarkable'],
+            });
+            created.followUps.push({ task: fTask, offsetDays: offset });
+            // small delay to avoid rate limits
+            await sleep(150);
+          } catch (err) {
+            console.error('Todoist: follow-up task creation failed', { projectName: payload.projectName, offset, error: err });
+          }
+        }
+      }
+
+      return created;
     } catch (error) {
       console.error('Todoist reMarkable タスク作成エラー:', error);
       throw error;
