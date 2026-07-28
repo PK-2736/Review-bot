@@ -73,6 +73,11 @@ class RemarkableService {
         const readArgs = { document: document.name, include_ocr: true };
         console.log('🖊️ reMarkable sync: remarkable_read args', readArgs);
         const readResult = await remarkableMcp.read(readArgs);
+        try {
+          console.log('🖊️ reMarkable sync: remarkable_read RAW:', JSON.stringify(readResult, null, 2));
+        } catch (error) {
+          console.dir(readResult, { depth: null });
+        }
         console.log('🖊️ reMarkable sync: remarkable_read result', {
           hasText: typeof readResult.text === 'string',
           hasJson: typeof readResult.json === 'object',
