@@ -76,7 +76,7 @@ class RemarkablePageCacheStore {
       if (!createIfMissing) {
         return null;
       }
-      cache.documents[key] = { baseline: 0 };
+      cache.documents[key] = { baseline: 0, projectName: null };
     }
     return cache.documents[key];
   }
@@ -84,6 +84,17 @@ class RemarkablePageCacheStore {
   static setDocumentBaseline(documentPath, page) {
     const documentCache = this.getDocumentCache(documentPath, true);
     documentCache.baseline = Number(page);
+  }
+
+  static setDocumentProjectName(documentPath, projectName) {
+    const documentCache = this.getDocumentCache(documentPath, true);
+    documentCache.projectName = projectName != null ? String(projectName).trim() : null;
+  }
+
+  static getDocumentProjectName(documentPath) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return null;
+    return documentCache.projectName || null;
   }
 
   static getDocumentBaseline(documentPath) {

@@ -61,6 +61,12 @@ module.exports = {
             .setRequired(true)
             .setMinValue(1)
         )
+        .addStringOption(option =>
+          option
+            .setName('project')
+            .setDescription('このノートに紐付ける Todoist のプロジェクト名（以後このノートはこのプロジェクト名を使います）')
+            .setRequired(false)
+        )
     ),
 
   async execute(interaction) {
@@ -190,6 +196,10 @@ async function handleCache(interaction) {
 
     RemarkablePageCacheStore.ensureCacheFile();
     RemarkablePageCacheStore.setDocumentBaseline(documentPath, page);
+    const projectName = interaction.options.getString('project');
+    if (projectName) {
+      RemarkablePageCacheStore.setDocumentProjectName(documentPath, projectName);
+    }
     RemarkablePageCacheStore.save();
 
     const embed = new EmbedBuilder()
@@ -243,7 +253,8 @@ async function handleCacheList(interaction) {
 
     for (const doc of docs) {
       const baseline = RemarkablePageCacheStore.getDocumentBaseline(doc) || 0;
-      const pageSummary = `baseline ${baseline}`;
+      const projectName = RemarkablePageCacheStore.getDocumentProjectName(doc);
+      const pageSummary = `baseline ${baseline}` + (projectName ? `\nproject: ${projectName}` : '');
       embed.addFields({ name: doc, value: pageSummary, inline: false });
     }
 

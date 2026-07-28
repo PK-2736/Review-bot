@@ -165,10 +165,20 @@ class RemarkableService {
     // Create a single Todoist task per notebook, consolidating multiple Gemini tasks
     for (let notebookIndex = 0; notebookIndex < plan.notebooks.length; notebookIndex += 1) {
       const notebook = plan.notebooks[notebookIndex];
-      const projectName = `${config.remarkable.projectPrefix || ''}${notebook.name}`;
+      // Determine project name: prefer per-document projectName stored in cache
+      let projectName = `${config.remarkable.projectPrefix || ''}${notebook.name}`;
+      // try to find a representative documentPath from matched group pages
+      const matchedGroup = findGroupForNotebook(notebook, groups, notebookIndex);
+      if (matchedGroup && Array.isArray(matchedGroup.pages) && matchedGroup.pages.length > 0) {
+        const representativeDocPath = matchedGroup.pages[0].documentPath;
+        const cachedProject = RemarkablePageCacheStore.getDocumentProjectName(representativeDocPath);
+        if (cachedProject) {
+          projectName = cachedProject;
+        }
+      }
       summary.notebookNames.push(notebook.name);
 
-      const matchedGroup = findGroupForNotebook(notebook, groups, notebookIndex);
+      // matchedGroup already computed above
       const pageNumbers = matchedGroup?.pages.map(p => Number(p.page)) || [];
       const pageHeader = formatPageRangeForDescription(pageNumbers);
 

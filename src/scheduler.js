@@ -38,25 +38,30 @@ class TodoScheduler {
 
       console.log(`✅ reMarkable同期完了 (追加: ${result.created}, ノート: ${result.notebooks}, スキップ: ${result.skipped})`);
 
-      if (result.created > 0) {
+      // 常に通知チャンネルへ簡易サマリを送信（追加があれば詳細、なければ情報のみ）
+      try {
         const channel = await this.client.channels.fetch(config.notification.channelId);
         if (channel) {
           const embed = new EmbedBuilder()
-            .setColor('#4CAF50')
-            .setTitle('🖊️ reMarkable 復習を自動登録しました')
+            .setColor(result.created > 0 ? '#4CAF50' : '#607D8B')
+            .setTitle(result.created > 0 ? '🖊️ reMarkable 復習を自動登録しました' : '🖊️ reMarkable 同期完了（新規タスクなし）')
             .addFields(
               { name: '➕ 追加', value: `${result.created}件`, inline: true },
               { name: '📓 ノート', value: `${result.notebooks}冊`, inline: true },
               { name: '⏭️ スキップ', value: `${result.skipped}件`, inline: true }
             );
 
-          if (result.notebookNames.length > 0) {
+          if (result.notebookNames && result.notebookNames.length > 0) {
             embed.addFields({ name: '📚 対象ノート', value: result.notebookNames.join(' / '), inline: false });
           }
 
           embed.setTimestamp();
           await channel.send({ embeds: [embed] });
+        } else {
+          console.warn('通知チャンネルが取得できませんでした:', config.notification.channelId);
         }
+      } catch (notifyErr) {
+        console.error('通知送信エラー:', notifyErr);
       }
     } catch (error) {
       console.error('reMarkable同期エラー:', error);
