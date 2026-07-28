@@ -4,7 +4,7 @@ const geminiService = require('./geminiService');
 const RemarkableCacheStore = require('./remarkableCacheStore');
 const RemarkablePageCacheStore = require('./remarkablePageCacheStore');
 const remarkablePageSyncService = require('./remarkablePageSyncService');
-const { formatPageRange } = require('./remarkableCacheUtils');
+const { formatPageRange, formatPageRangeForDescription } = require('./remarkableCacheUtils');
 const todoistService = require('./todoist');
 
 const DEBUG = process.env.DEBUG_REMARKABLE === 'true';
@@ -152,8 +152,8 @@ class RemarkableService {
         dueDate.setDate(today.getDate() + task.due_days);
 
         const pageNumbers = groups.find(g => g.name === notebook.name)?.pages.map(p => Number(p.page)) || [];
-        const pageRange = formatPageRange(pageNumbers);
-        const description = `${notebook.name}\n${pageRange ? `${pageRange}\n\n` : ''}${task.title}`;
+        const pageHeader = formatPageRangeForDescription(pageNumbers);
+        const description = `${pageHeader ? pageHeader + '\n\n' : ''}${notebook.name}\n\n${task.title}`;
 
         try {
           await todoistService.createRemarkableTask({
@@ -181,11 +181,15 @@ class RemarkableService {
       }
     }
 
-    // 成功したページのみキャッシュを更新
+    // 成功したページのみキャッシュを更新（更新ごとに保存）
     for (const pageData of successfulPages) {
       RemarkablePageCacheStore.setPageEntry(pageData.documentPath, pageData.page, pageData.hash, new Date().toISOString());
+      try {
+        RemarkablePageCacheStore.save();
+      } catch (error) {
+        console.error('ページキャッシュ保存エラー:', error.message);
+      }
     }
-    RemarkablePageCacheStore.save();
 
     summary.notebooks = plan.notebooks.length;
 

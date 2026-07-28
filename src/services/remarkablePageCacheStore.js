@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
-const CACHE_FILE = path.join(__dirname, '../cache/remarkable-pages.json');
+// Allow overriding cache location via environment variable for persistent storage
+const CACHE_FILE = process.env.REMARKABLE_CACHE_FILE || path.join(os.homedir(), '.review-bot', 'remarkable-pages.json');
 const CACHE_DIR = path.dirname(CACHE_FILE);
 
 if (!fs.existsSync(CACHE_DIR)) {
@@ -22,6 +24,9 @@ class RemarkablePageCacheStore {
       this.cache = {};
       if (createIfMissing) {
         this.save();
+        console.log('Remarkable page cache created at', CACHE_FILE);
+      } else {
+        console.log('Remarkable page cache not found, expected at', CACHE_FILE);
       }
       return this.cache;
     }
@@ -41,6 +46,7 @@ class RemarkablePageCacheStore {
   static save() {
     try {
       fs.writeFileSync(CACHE_FILE, JSON.stringify(this.cache || {}, null, 2), 'utf-8');
+      console.log('Remarkable page cache saved to', CACHE_FILE);
     } catch (error) {
       console.error('Remarkable page cache save error:', error.message);
       throw error;

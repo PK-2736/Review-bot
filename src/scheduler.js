@@ -17,6 +17,52 @@ class TodoScheduler {
     this.jobs = [];
   }
 
+  async syncRemarkableReviews() {
+    try {
+      if (!remarkableService.isConfigured()) {
+        console.warn(`⚠️ reMarkable同期スキップ（設定不足: ${remarkableService.missingConfig().join(', ')})`);
+        return;
+      }
+
+      console.log('[Scheduler] Daily sync started');
+      const result = await remarkableService.syncTodayReviews();
+
+      console.log(`[Scheduler] Changed pages: ${result.changedPages}`);
+      console.log(`[Scheduler] Todos created: ${result.todoistCreated || result.created}`);
+
+      if ((result.todoistCreated || result.created) > 0) {
+        console.log('[Scheduler] Cache updated');
+      }
+
+      console.log('[Scheduler] Finished');
+
+      console.log(`✅ reMarkable同期完了 (追加: ${result.created}, ノート: ${result.notebooks}, スキップ: ${result.skipped})`);
+
+      if (result.created > 0) {
+        const channel = await this.client.channels.fetch(config.notification.channelId);
+        if (channel) {
+          const embed = new EmbedBuilder()
+            .setColor('#4CAF50')
+            .setTitle('🖊️ reMarkable 復習を自動登録しました')
+            .addFields(
+              { name: '➕ 追加', value: `${result.created}件`, inline: true },
+              { name: '📓 ノート', value: `${result.notebooks}冊`, inline: true },
+              { name: '⏭️ スキップ', value: `${result.skipped}件`, inline: true }
+            );
+
+          if (result.notebookNames.length > 0) {
+            embed.addFields({ name: '📚 対象ノート', value: result.notebookNames.join(' / '), inline: false });
+          }
+
+          embed.setTimestamp();
+          await channel.send({ embeds: [embed] });
+        }
+      }
+    } catch (error) {
+      console.error('reMarkable同期エラー:', error);
+    }
+  }
+
   /**
    * スケジューラーを開始
    */
@@ -136,45 +182,6 @@ class TodoScheduler {
 
     this.jobs.push(remarkableJob);
     console.log(`🖊️ reMarkable同期を設定しました: ${config.remarkable.syncTime}`);
-  }
-
-  /**
-   * reMarkable ノートの復習同期
-   */
-  async syncRemarkableReviews() {
-    try {
-      if (!remarkableService.isConfigured()) {
-        console.warn(`⚠️ reMarkable同期スキップ（設定不足: ${remarkableService.missingConfig().join(', ')}）`);
-        return;
-      }
-
-      const result = await remarkableService.syncTodayReviews();
-      console.log(`✅ reMarkable同期完了 (追加: ${result.created}, ノート: ${result.notebooks}, スキップ: ${result.skipped})`);
-
-      // 通知チャンネルへ結果を報告（新規登録があった場合のみ）
-      if (result.created > 0) {
-        const channel = await this.client.channels.fetch(config.notification.channelId);
-        if (channel) {
-          const embed = new EmbedBuilder()
-            .setColor('#4CAF50')
-            .setTitle('🖊️ reMarkable 復習を自動登録しました')
-            .addFields(
-              { name: '➕ 追加', value: `${result.created}件`, inline: true },
-              { name: '📓 ノート', value: `${result.notebooks}冊`, inline: true },
-              { name: '⏭️ スキップ', value: `${result.skipped}件`, inline: true }
-            );
-
-          if (result.notebookNames.length > 0) {
-            embed.addFields({ name: '📚 対象ノート', value: result.notebookNames.join(' / '), inline: false });
-          }
-
-          embed.setTimestamp();
-          await channel.send({ embeds: [embed] });
-        }
-      }
-    } catch (error) {
-      console.error('reMarkable同期エラー:', error);
-    }
   }
 
   /**

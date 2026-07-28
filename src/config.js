@@ -60,7 +60,7 @@ module.exports = {
   remarkable: {
     // reMarkable ノートの自動復習化
     enabled: process.env.REMARKABLE_ENABLED === 'true',
-    syncTime: process.env.REMARKABLE_SYNC_TIME || '0 22 * * *', // 毎日22:00
+    syncTime: process.env.REMARKABLE_SYNC_TIME || '0 23 * * *', // 毎日23:00
     timezone: process.env.REMARKABLE_TIMEZONE || 'Asia/Tokyo',
     projectPrefix: process.env.REMARKABLE_PROJECT_PREFIX || '', // Todoistプロジェクト名の接頭辞
     mcp: {
