@@ -75,14 +75,45 @@ class RemarkablePageSyncService {
       const readArgs = { document: documentPath, page, include_ocr: true };
       console.log('remarkable_read args:', JSON.stringify(readArgs));
       const readResult = await remarkableMcp.read(readArgs);
+
+      let readResultJson;
+      try {
+        readResultJson = JSON.stringify(readResult, null, 2);
+      } catch (error) {
+        readResultJson = `Unable to stringify readResult: ${error.message}`;
+      }
+
+      const readResultKeys = readResult && typeof readResult === 'object' ? Object.keys(readResult) : [];
       const parsed = this.parseReadResult(readResult);
       const rawText = this.resolvePageText(readResult, parsed);
       const normalizedText = this.normalizeText(rawText);
       const content = normalizedText;
       const contentLength = content.length;
+      const hasText = Boolean(rawText && rawText.trim().length > 0);
+      const hasOcr = Boolean(parsed.text || parsed.content);
+      const hasStrokes = (Array.isArray(readResult?.strokes) && readResult.strokes.length > 0)
+        || (Array.isArray(readResult?.json?.strokes) && readResult.json.strokes.length > 0);
+
+      console.log('remarkable_read result:', readResultJson);
+      console.log('remarkable_read OCR info:', {
+        page,
+        ocrLength: rawText.length,
+        ocrPreview: rawText.slice(0, 100),
+        keys: readResultKeys,
+        hasText,
+        hasOcr,
+        hasStrokes,
+      });
 
       if (normalizedText === '' || contentLength === 0) {
-        console.log('Empty OCR page detected, ending scan:', { documentPath, page });
+        console.log('Empty OCR page detected, ending scan:', {
+          page,
+          hasOcr,
+          ocrLength: rawText.length,
+          hasText,
+          hasStrokes,
+          keys: readResultKeys,
+        });
         break;
       }
 
