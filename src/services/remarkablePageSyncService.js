@@ -84,12 +84,6 @@ class RemarkablePageSyncService {
       }
 
       const readResultKeys = readResult && typeof readResult === 'object' ? Object.keys(readResult) : [];
-      const readErrorType = readResult && readResult._error && typeof readResult._error.type === 'string'
-        ? readResult._error.type
-        : null;
-      const readErrorMessage = readResult && readResult._error && typeof readResult._error.message === 'string'
-        ? readResult._error.message
-        : null;
       const parsed = this.parseReadResult(readResult);
       const rawText = this.resolvePageText(readResult, parsed);
       const normalizedText = this.normalizeText(rawText);
@@ -99,6 +93,8 @@ class RemarkablePageSyncService {
       const hasOcr = Boolean(parsed.text || parsed.content);
       const hasStrokes = (Array.isArray(readResult?.strokes) && readResult.strokes.length > 0)
         || (Array.isArray(readResult?.json?.strokes) && readResult.json.strokes.length > 0);
+      const readErrorType = parsed.errorType || (readResult && readResult._error && typeof readResult._error.type === 'string' ? readResult._error.type : null);
+      const readErrorMessage = parsed.errorMessage || (readResult && readResult._error && typeof readResult._error.message === 'string' ? readResult._error.message : null);
 
       console.log('remarkable_read result:', readResultJson);
       console.log('remarkable_read OCR info:', {
@@ -177,7 +173,7 @@ class RemarkablePageSyncService {
   }
 
   parseReadResult(readResult) {
-    const result = { text: '', content: '', more: false };
+    const result = { text: '', content: '', more: false, errorType: null, errorMessage: null };
 
     if (!readResult) return result;
 
@@ -189,22 +185,41 @@ class RemarkablePageSyncService {
       result.text = result.text || readResult.json.text.trim();
     }
 
+    let parsedResult = null;
     if (readResult.json && typeof readResult.json.result === 'string') {
       try {
-        const parsed = JSON.parse(readResult.json.result);
-        if (parsed && typeof parsed === 'object') {
-          if (typeof parsed.content === 'string' && parsed.content.trim() !== '') {
-            result.content = parsed.content.trim();
-          }
-          if (typeof parsed.text === 'string' && parsed.text.trim() !== '') {
-            result.text = result.text || parsed.text.trim();
-          }
-          if (parsed.more === true) {
-            result.more = true;
-          }
-        }
+        parsedResult = JSON.parse(readResult.json.result);
       } catch (error) {
         console.warn('RemarkablePageSyncService: parse readResult.json.result failed', error.message);
+      }
+    }
+
+    if (parsedResult && typeof parsedResult === 'object') {
+      if (typeof parsedResult.content === 'string' && parsedResult.content.trim() !== '') {
+        result.content = parsedResult.content.trim();
+      }
+      if (typeof parsedResult.text === 'string' && parsedResult.text.trim() !== '') {
+        result.text = result.text || parsedResult.text.trim();
+      }
+      if (parsedResult.more === true) {
+        result.more = true;
+      }
+      if (parsedResult._error && typeof parsedResult._error === 'object') {
+        if (typeof parsedResult._error.type === 'string') {
+          result.errorType = parsedResult._error.type;
+        }
+        if (typeof parsedResult._error.message === 'string') {
+          result.errorMessage = parsedResult._error.message;
+        }
+      }
+    }
+
+    if (readResult._error && typeof readResult._error === 'object') {
+      if (typeof readResult._error.type === 'string') {
+        result.errorType = result.errorType || readResult._error.type;
+      }
+      if (typeof readResult._error.message === 'string') {
+        result.errorMessage = result.errorMessage || readResult._error.message;
       }
     }
 
