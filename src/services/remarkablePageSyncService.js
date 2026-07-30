@@ -23,16 +23,21 @@ class RemarkablePageSyncService {
     return { baseline };
   }
 
-  async getChangedPagesForDocument(documentPath, startPage) {
+  async getChangedPagesForDocument(documentPath, startPage, pageCount = null) {
     this.ensureCacheFileExists();
     const baseline = RemarkablePageCacheStore.getDocumentBaseline(documentPath);
     const requestedStart = Math.max(1, Number(startPage) || 1);
     const effectiveStart = Math.max(requestedStart, baseline + 1);
-    console.log('remarkable sync baseline:', { documentPath, baseline, requestedStart, effectiveStart });
+    console.log('remarkable sync baseline:', { documentPath, baseline, requestedStart, effectiveStart, pageCount });
+
+    if (pageCount != null && effectiveStart > pageCount) {
+      return { changedPages: [], skippedPages: 0, registeredPages: 0 };
+    }
+
     if (effectiveStart <= baseline) {
       return { changedPages: [], skippedPages: 0, registeredPages: 0 };
     }
-    return this.processPages(documentPath, effectiveStart);
+    return this.processPages(documentPath, effectiveStart, pageCount);
   }
 
   normalizeText(text) {
@@ -65,13 +70,18 @@ class RemarkablePageSyncService {
     };
   }
 
-  async processPages(documentPath, startPage) {
+  async processPages(documentPath, startPage, endPage = null) {
     const changedPages = [];
     let registeredPages = 0;
     let page = Math.max(1, Number(startPage) || 1);
     let lastPage = null;
 
     while (true) {
+      if (endPage != null && page > endPage) {
+        console.log('remarkable sync: reached metadata pageCount limit, ending scan', { documentPath, page, endPage });
+        break;
+      }
+
       const readArgs = { document: documentPath, page, include_ocr: true };
       console.log('remarkable_read args:', JSON.stringify(readArgs));
       const readResult = await remarkableMcp.read(readArgs);
@@ -146,6 +156,14 @@ class RemarkablePageSyncService {
       changedPages.push({ document: documentPath, page, content });
       registeredPages += 1;
       lastPage = page;
+
+      if (endPage != null) {
+        if (page >= endPage) {
+          break;
+        }
+        page += 1;
+        continue;
+      }
 
       if (!parsed.more) {
         break;

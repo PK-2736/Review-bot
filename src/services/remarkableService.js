@@ -96,10 +96,16 @@ class RemarkableService {
 
       try {
         const baseline = RemarkablePageCacheStore.getDocumentBaseline(document.path);
+        const pageCount = Number.isFinite(Number(document.pageCount)) ? Number(document.pageCount) : null;
         const startPage = Math.max(1, baseline + 1);
-        console.log('remarkable sync document baseline:', { documentPath: document.path, baseline, startPage });
+        console.log('remarkable sync document baseline:', { documentPath: document.path, baseline, startPage, pageCount });
 
-        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, startPage);
+        if (pageCount != null && pageCount <= baseline) {
+          console.log('remarkable sync: no new pages detected via metadata, skipping document', { documentPath: document.path, baseline, pageCount });
+          continue;
+        }
+
+        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, startPage, pageCount);
         summary.changedPages += result.changedPages.length;
         summary.skippedPages += result.skippedPages;
 
@@ -201,6 +207,7 @@ class RemarkableService {
           description,
           dueDate,
           priority: maxPriority,
+          createFollowUps: false,
         });
         summary.created += 1;
         summary.todoistCreated += 1;
@@ -329,6 +336,7 @@ class RemarkableService {
       const id = this.firstDefined(raw, ['path']);
       const name = this.firstDefined(raw, ['name']) || '(無題ドキュメント)';
       const modified = this.firstDefined(raw, ['modified', 'updated', 'timestamp']);
+      const pageCount = this.extractPageCount(raw);
       if (id == null) continue;
 
       documents.push({
@@ -336,6 +344,7 @@ class RemarkableService {
         name: String(name),
         path: String(id),
         modified: modified != null ? String(modified) : undefined,
+        pageCount: pageCount != null ? pageCount : undefined,
       });
     }
 
@@ -361,6 +370,33 @@ class RemarkableService {
       }
     }
     return undefined;
+  }
+
+  extractPageCount(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const pageCountCandidates = [
+      'pageCount',
+      'page_count',
+      'pages',
+      'pageSize',
+      'totalPages',
+      'total_pages',
+    ];
+
+    for (const key of pageCountCandidates) {
+      const value = raw[key];
+      if (value == null) continue;
+      const num = Number(value);
+      if (Number.isFinite(num) && num >= 0) {
+        return Math.max(0, Math.floor(num));
+      }
+    }
+
+    if (Array.isArray(raw.pages)) {
+      return raw.pages.length;
+    }
+
+    return null;
   }
 }
 
