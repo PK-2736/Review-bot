@@ -16,26 +16,36 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 class GeminiService {
   constructor() {
     this.apiKey = config.remarkable.gemini.apiKey;
-    this.model = config.remarkable.gemini.model;
+    this.defaultModel = 'gemini-3.6-flash';
+    this.model = this.normalizeModel(config.remarkable.gemini.model || this.defaultModel);
+  }
+
+  normalizeModel(model) {
+    if (!model) return this.defaultModel;
+    let normalized = String(model).trim();
+    if (normalized.toLowerCase().startsWith('models/')) {
+      normalized = normalized.slice('models/'.length);
+    }
+    return normalized || this.defaultModel;
+  }
+
+  getGeminiUrl(model) {
+    return `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
   }
 
   isConfigured() {
     return Boolean(this.apiKey);
   }
 
-  /**
-   * OCRをまとめたテキストから復習JSONを生成
-   * @param {string} groupedOcrText - ノートごとにまとめたOCR結果
-   * @returns {Promise<{notebooks: Array}>}
-   */
-  async generateReviewPlan(groupedOcrText) {
-    if (!this.apiKey) {
-      throw new Error('GEMINI_API_KEY が設定されていません');
-    }
+  isModelUnavailableError(error) {
+    if (!error || typeof error !== 'object') return false;
+    const message = String(error.message || '').toLowerCase();
+    const status = String(error.status || '').toUpperCase();
+    return status === 'NOT_FOUND' && message.includes('no longer available');
+  }
 
-    const prompt = this.buildPrompt(groupedOcrText);
-
-    const url = `${GEMINI_BASE}/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+  async requestReviewPlan(model, prompt) {
+    const url = this.getGeminiUrl(model);
     const body = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
@@ -51,17 +61,44 @@ class GeminiService {
     });
 
     const data = await response.json().catch(() => null);
-
     if (!response.ok) {
       const message = data && data.error ? data.error.message : `HTTP ${response.status}`;
       const error = new Error(`Gemini request failed: ${message}`);
       error.responseData = data;
+      error.status = data && data.error ? data.error.status : response.status;
       throw error;
     }
 
-    const text = this.extractText(data);
-    const parsed = this.parseJson(text);
-    return this.validate(parsed);
+    return data;
+  }
+
+  /**
+   * OCRをまとめたテキストから復習JSONを生成
+   * @param {string} groupedOcrText - ノートごとにまとめたOCR結果
+   * @returns {Promise<{notebooks: Array}>}
+   */
+  async generateReviewPlan(groupedOcrText) {
+    if (!this.apiKey) {
+      throw new Error('GEMINI_API_KEY が設定されていません');
+    }
+
+    const prompt = this.buildPrompt(groupedOcrText);
+
+    try {
+      const data = await this.requestReviewPlan(this.model, prompt);
+      const text = this.extractText(data);
+      const parsed = this.parseJson(text);
+      return this.validate(parsed);
+    } catch (error) {
+      if (this.isModelUnavailableError(error) && this.model !== this.defaultModel) {
+        console.warn(`Gemini model '${this.model}' is unavailable; retrying with fallback model '${this.defaultModel}'`);
+        const data = await this.requestReviewPlan(this.defaultModel, prompt);
+        const text = this.extractText(data);
+        const parsed = this.parseJson(text);
+        return this.validate(parsed);
+      }
+      throw error;
+    }
   }
 
   buildPrompt(groupedOcrText) {

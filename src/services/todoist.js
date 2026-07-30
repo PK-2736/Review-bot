@@ -193,6 +193,23 @@ class TodoistService {
     this.projectCache = new Map();
   }
 
+  normalizeProjectName(projectName) {
+    return String(projectName || '').trim();
+  }
+
+  findMatchingProjectId(projects, projectNameStr) {
+    const lower = projectNameStr.toLowerCase();
+    const exact = projects.find((p) => p && p.name === projectNameStr);
+    if (exact) return exact.id;
+    const ciExact = projects.find((p) => p && String(p.name).toLowerCase() === lower);
+    if (ciExact) return ciExact.id;
+    const contains = projects.find((p) => p && String(p.name).toLowerCase().includes(lower));
+    if (contains) return contains.id;
+    const starts = projects.find((p) => p && String(p.name).toLowerCase().startsWith(lower));
+    if (starts) return starts.id;
+    return null;
+  }
+
   /**
    * 復習用プロジェクトを取得または作成
    */
@@ -260,7 +277,15 @@ class TodoistService {
 
       // Respect an optional configured project limit to avoid hitting Todoist account limits
       const configuredLimit = process.env.TODOIST_PROJECT_LIMIT ? Number(process.env.TODOIST_PROJECT_LIMIT) : null;
+      const fallbackProjectName = this.normalizeProjectName(config.review.defaultProjectName);
+      const fallbackProjectId = this.findMatchingProjectId(projects, fallbackProjectName);
       if (configuredLimit != null && Number.isFinite(configuredLimit) && projects.length >= configuredLimit) {
+        if (projectNameStr !== fallbackProjectName && fallbackProjectId) {
+          console.warn('Todoist: configured project limit reached; falling back to default review project', { requestedProject: projectNameStr, fallbackProjectName, fallbackProjectId });
+          this.projectCache.set(projectName, fallbackProjectId);
+          return fallbackProjectId;
+        }
+
         const msg = `Todoist project limit reached: ${projects.length} >= configured limit ${configuredLimit}. Will not attempt to create project.`;
         console.error(msg);
         const err = new Error(msg);
@@ -279,6 +304,11 @@ class TodoistService {
         try {
           const tag = createError && createError.responseData && createError.responseData.error_tag;
           if (tag === 'MAX_PROJECTS_LIMIT_REACHED' || (createError.httpStatusCode === 403 && createError.responseData && typeof createError.responseData.error === 'string' && createError.responseData.error.includes('Maximum number of projects'))) {
+            if (projectNameStr !== fallbackProjectName && fallbackProjectId) {
+              console.warn('Todoist: project creation aborted due to account limit; falling back to default review project', { projectName: projectNameStr, fallbackProjectName, fallbackProjectId });
+              this.projectCache.set(projectName, fallbackProjectId);
+              return fallbackProjectId;
+            }
             const err = new Error(`Todoist project limit reached while creating '${projectNameStr}'`);
             err.code = 'TODOIST_PROJECT_LIMIT_REACHED';
             console.error('Todoist: project creation aborted due to account limit', { projectName: projectNameStr, response: createError.responseData });
@@ -350,9 +380,7 @@ class TodoistService {
    * @param {number} [payload.priority=1] - 優先度（1-4, 4が最優先=P1）
    */
   async createRemarkableTask(payload) {
-    try {
-      const projectId = await this.getOrCreateProjectByName(payload.projectName);
-      // Create main task
+    const createTaskForProject = async (projectId) => {
       const dueDateStr = formatLocalDate(payload.dueDate instanceof Date ? payload.dueDate : new Date(payload.dueDate));
       const mainTask = await this.api.addTask({
         content: payload.content,
@@ -364,8 +392,6 @@ class TodoistService {
       });
 
       const created = { main: mainTask, followUps: [] };
-
-      // By default, create follow-up tasks at +1 day, +7 days, +30 days relative to the main due date.
       if (payload.createFollowUps !== false) {
         const offsets = [1, 7, 30];
         for (const offset of offsets) {
@@ -383,14 +409,32 @@ class TodoistService {
               labels: ['復習', 'reMarkable'],
             });
             created.followUps.push({ task: fTask, offsetDays: offset });
-            // small delay to avoid rate limits
             await sleep(150);
           } catch (err) {
             console.error('Todoist: follow-up task creation failed', { projectName: payload.projectName, offset, error: err });
           }
         }
       }
+      return created;
+    };
 
+    try {
+      let projectId;
+      try {
+        projectId = await this.getOrCreateProjectByName(payload.projectName);
+      } catch (error) {
+        if (error.code === 'TODOIST_PROJECT_LIMIT_REACHED' && payload.projectName !== config.review.defaultProjectName) {
+          console.warn('Todoist: project limit reached for notebook project, falling back to default review project', {
+            requestedProject: payload.projectName,
+            fallbackProjectName: config.review.defaultProjectName,
+          });
+          projectId = await this.getOrCreateProject();
+        } else {
+          throw error;
+        }
+      }
+
+      const created = await createTaskForProject(projectId);
       return created;
     } catch (error) {
       console.error('Todoist reMarkable タスク作成エラー:', error);
