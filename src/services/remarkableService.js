@@ -64,7 +64,7 @@ class RemarkableService {
     const documents = this.normalizeRecent(recentRaw);
 
     console.log('🖊️ reMarkable sync: documents count=', documents.length);
-    console.log('🖊️ reMarkable sync: documents=', documents.map(doc => ({ id: doc.id, name: doc.name, path: doc.path })));
+    console.log('🖊️ reMarkable sync: documents=', documents.map(doc => ({ id: doc.id, name: doc.name, path: doc.path, lastModified: doc.lastModified })));
     if (DEBUG) console.log('reMarkable debug: recentRaw', JSON.stringify(recentRaw).slice(0, 2000));
 
     if (documents.length === 0) {
@@ -82,7 +82,7 @@ class RemarkableService {
     const cachedDocuments = RemarkablePageCacheStore.getCachedDocuments();
     console.log('Cache found:', cachedDocuments.map(doc => `document=${doc}`).join(', '));
 
-    const documentLastPages = {};
+    const documentUpdates = {};
     for (const document of documents) {
       const key = document.id;
       const normalizedKey = RemarkablePageCacheStore.normalizeDocumentPath(document.path);
@@ -92,27 +92,50 @@ class RemarkableService {
       }
       console.log('Cache matched:', `document=${document.path}`, `normalizedKey=${normalizedKey}`);
 
-      console.log('🖊️ reMarkable sync: processing document', { key, name: document.name, path: document.path });
+      const cachedLastModified = RemarkablePageCacheStore.getDocumentLastModified(document.path);
+      const cachedDocumentId = RemarkablePageCacheStore.getDocumentId(document.path);
+      const currentLastModified = document.lastModified || null;
+      const currentDocumentId = document.documentId || null;
+      const changed = currentLastModified !== null ? currentLastModified !== cachedLastModified : true;
+
+      console.log('Document metadata:', {
+        document: document.path,
+        lastModified: currentLastModified,
+        cachedLastModified,
+        changed,
+      });
+
+      if (!changed) {
+        console.log('Skip document (unchanged):', { document: document.path, lastModified: currentLastModified });
+        continue;
+      }
+
+      console.log('Processing updated document', { document: document.path });
 
       try {
         const baseline = RemarkablePageCacheStore.getDocumentBaseline(document.path);
         const pageCount = Number.isFinite(Number(document.pageCount)) ? Number(document.pageCount) : null;
         const startPage = Math.max(1, baseline + 1);
-        console.log('remarkable sync document baseline:', { documentPath: document.path, baseline, startPage, pageCount });
+        const endPage = pageCount != null ? pageCount : null;
+        console.log('remarkable sync document baseline:', { documentPath: document.path, baseline, startPage, endPage });
+
+        let result = { changedPages: [], skippedPages: 0, registeredPages: 0, lastPage: null };
 
         if (pageCount != null && pageCount <= baseline) {
-          console.log('remarkable sync: no new pages detected via metadata, skipping document', { documentPath: document.path, baseline, pageCount });
-          continue;
+          console.log('remarkable sync: no new pages detected via metadata, skipping OCR', { documentPath: document.path, baseline, pageCount });
+        } else {
+          result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, startPage, endPage);
         }
 
-        const result = await remarkablePageSyncService.getChangedPagesForDocument(document.path, startPage, pageCount);
         summary.changedPages += result.changedPages.length;
         summary.skippedPages += result.skippedPages;
 
-        // record lastPage for later baseline update
-        if (result.lastPage != null) {
-          documentLastPages[document.path] = result.lastPage;
-        }
+        // record lastPage and metadata for later cache update
+        documentUpdates[document.path] = {
+          lastPage: result.lastPage,
+          lastModified: currentLastModified,
+          documentId: currentDocumentId || cachedDocumentId,
+        };
 
         if (result.changedPages.length > 0) {
           groups.push({
@@ -143,6 +166,7 @@ class RemarkableService {
     summary.geminiRequests = groups.length;
 
     if (groups.length === 0) {
+      this.applyDocumentUpdates(documentUpdates);
       RemarkablePageCacheStore.save();
       this.commitCache(processedKeys);
       return summary;
@@ -236,11 +260,7 @@ class RemarkableService {
 
     // update baselines for processed documents (one save at end)
     try {
-      for (const [docPath, lastPage] of Object.entries(documentLastPages)) {
-        if (lastPage != null) {
-          RemarkablePageCacheStore.setDocumentBaseline(docPath, lastPage);
-        }
-      }
+      this.applyDocumentUpdates(documentUpdates);
       RemarkablePageCacheStore.save();
     } catch (err) {
       console.warn('Failed to update document baselines:', err.message);
@@ -337,18 +357,61 @@ class RemarkableService {
       const name = this.firstDefined(raw, ['name']) || '(無題ドキュメント)';
       const modified = this.firstDefined(raw, ['modified', 'updated', 'timestamp']);
       const pageCount = this.extractPageCount(raw);
+      const documentId = this.extractDocumentId(raw);
       if (id == null) continue;
 
       documents.push({
         id: String(id),
         name: String(name),
         path: String(id),
-        modified: modified != null ? String(modified) : undefined,
+        lastModified: modified != null ? String(modified) : undefined,
+        documentId: documentId != null ? String(documentId) : undefined,
         pageCount: pageCount != null ? pageCount : undefined,
       });
     }
 
     return documents;
+  }
+
+  applyDocumentUpdates(documentUpdates) {
+    if (!documentUpdates || typeof documentUpdates !== 'object') {
+      return;
+    }
+
+    for (const [documentPath, update] of Object.entries(documentUpdates)) {
+      if (!update || typeof update !== 'object') continue;
+
+      if (update.lastPage != null) {
+        RemarkablePageCacheStore.setDocumentBaseline(documentPath, update.lastPage);
+      }
+      if (update.lastModified != null) {
+        RemarkablePageCacheStore.setDocumentLastModified(documentPath, update.lastModified);
+      }
+      if (update.documentId != null) {
+        RemarkablePageCacheStore.setDocumentId(documentPath, update.documentId);
+      }
+    }
+  }
+
+  extractDocumentId(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const documentIdCandidates = [
+      'documentId',
+      'document_id',
+      'docId',
+      'doc_id',
+      'id',
+    ];
+
+    for (const key of documentIdCandidates) {
+      const value = raw[key];
+      if (value != null && value !== '') {
+        return String(value);
+      }
+    }
+
+    return null;
   }
 
   /**

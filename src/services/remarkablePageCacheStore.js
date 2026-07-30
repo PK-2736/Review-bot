@@ -76,7 +76,12 @@ class RemarkablePageCacheStore {
       if (!createIfMissing) {
         return null;
       }
-      cache.documents[key] = { baseline: 0, projectName: null };
+      cache.documents[key] = {
+        baseline: 0,
+        projectName: null,
+        lastModified: null,
+        documentId: null,
+      };
     }
     return cache.documents[key];
   }
@@ -84,6 +89,16 @@ class RemarkablePageCacheStore {
   static setDocumentBaseline(documentPath, page) {
     const documentCache = this.getDocumentCache(documentPath, true);
     documentCache.baseline = Number(page);
+  }
+
+  static setDocumentLastModified(documentPath, lastModified) {
+    const documentCache = this.getDocumentCache(documentPath, true);
+    documentCache.lastModified = lastModified != null ? String(lastModified) : null;
+  }
+
+  static setDocumentId(documentPath, documentId) {
+    const documentCache = this.getDocumentCache(documentPath, true);
+    documentCache.documentId = documentId != null ? String(documentId) : null;
   }
 
   static setDocumentProjectName(documentPath, projectName) {
@@ -109,6 +124,18 @@ class RemarkablePageCacheStore {
     }
 
     return 0;
+  }
+
+  static getDocumentLastModified(documentPath) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return null;
+    return documentCache.lastModified || null;
+  }
+
+  static getDocumentId(documentPath) {
+    const documentCache = this.getDocumentCache(documentPath, false);
+    if (!documentCache) return null;
+    return documentCache.documentId || null;
   }
 
   static hasDocument(documentPath) {
