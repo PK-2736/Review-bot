@@ -84,6 +84,12 @@ class RemarkablePageSyncService {
       }
 
       const readResultKeys = readResult && typeof readResult === 'object' ? Object.keys(readResult) : [];
+      const readErrorType = readResult && readResult._error && typeof readResult._error.type === 'string'
+        ? readResult._error.type
+        : null;
+      const readErrorMessage = readResult && readResult._error && typeof readResult._error.message === 'string'
+        ? readResult._error.message
+        : null;
       const parsed = this.parseReadResult(readResult);
       const rawText = this.resolvePageText(readResult, parsed);
       const normalizedText = this.normalizeText(rawText);
@@ -103,7 +109,26 @@ class RemarkablePageSyncService {
         hasText,
         hasOcr,
         hasStrokes,
+        errorType: readErrorType,
+        errorMessage: readErrorMessage,
       });
+
+      if (readErrorType) {
+        const message = readErrorType === 'page_out_of_range'
+          ? 'Reached end of document'
+          : `remarkable_read error: ${readErrorType}${readErrorMessage ? ` - ${readErrorMessage}` : ''}`;
+        console.log(message, {
+          page,
+          errorType: readErrorType,
+          errorMessage: readErrorMessage,
+          hasOcr,
+          ocrLength: rawText.length,
+          hasText,
+          hasStrokes,
+          keys: readResultKeys,
+        });
+        break;
+      }
 
       if (normalizedText === '' || contentLength === 0) {
         console.log('Empty OCR page detected, ending scan:', {
