@@ -96,7 +96,7 @@ class RemarkableService {
       const cachedDocumentId = RemarkablePageCacheStore.getDocumentId(document.path);
       const currentLastModified = document.lastModified || null;
       const currentDocumentId = document.documentId || null;
-      const changed = currentLastModified !== null ? currentLastModified !== cachedLastModified : true;
+      const changed = cachedLastModified !== currentLastModified;
 
       console.log('Document metadata:', {
         document: document.path,
