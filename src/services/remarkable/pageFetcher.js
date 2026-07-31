@@ -50,7 +50,7 @@ function stripDataUri(data) {
  * @throws {Error} 画像を取得できなかった場合
  */
 async function fetchPage(notebookPath, pageNumber) {
-  const content = await mcpClient.page({ path: notebookPath, page: pageNumber });
+  const content = await mcpClient.page({ document: notebookPath, page: pageNumber, include_ocr: false });
 
   /** @type {Record<string, any>} remarkable_page のレスポンス JSON */
   const meta = content.json && typeof content.json === 'object' ? content.json : {};

@@ -247,14 +247,14 @@ class RemarkableMcpClient {
    * OCR は Gemini Vision が担当するため、必ず include_ocr=false で呼び出し、
    * OCR の二重実行を防ぐ。compatibility モードは使用しない。
    *
-   * @param {{ path: string, page: number }} args
+   * @param {{ document: string, page: number, include_ocr?: boolean }} args
    * @returns {Promise<McpContent>}
    */
   async page(args) {
     const result = await this.callTool('remarkable_page', {
-      path: args.path,
+      document: args.document,
       page: args.page,
-      include_ocr: false,
+      include_ocr: args.include_ocr === false ? false : false,
     });
     return this.extractContent(result);
   }
