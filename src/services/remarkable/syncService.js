@@ -157,9 +157,10 @@ class RemarkableSyncService {
    * @param {string} notebookPath
    * @returns {Promise<number|null>}
    */
-  async fetchTotalPages(notebookPath) {
+  async fetchTotalPages(notebookIdentifier) {
     try {
-      const content = await mcpClient.page({ path: notebookPath, page: 1 });
+      // notebookIdentifier は MCP が期待する document 引数（name や識別子）を渡す想定
+      const content = await mcpClient.page({ document: notebookIdentifier, page: 1, include_ocr: false });
       let data = content.json != null ? content.json : content.text;
 
       // 文字列の場合は最大2段階まで JSON 展開
@@ -187,7 +188,7 @@ class RemarkableSyncService {
 
       return null;
     } catch (error) {
-      logger.warn('remarkable_page から total_pages を取得できませんでした', { notebookPath, error: error instanceof Error ? error.message : String(error) });
+      logger.warn('remarkable_page から total_pages を取得できませんでした', { notebookIdentifier, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -215,7 +216,8 @@ class RemarkableSyncService {
     logger.info('[reMarkable] remarkable_page', { document: notebook.name, page: 1 });
     let pageContent = null;
     try {
-      pageContent = await mcpClient.page({ path: notebook.path, page: 1 });
+      // MCP の定義に合わせ、document 引数を渡す（name を使用）
+      pageContent = await mcpClient.page({ document: notebook.name, page: 1, include_ocr: false });
     } catch (err) {
       logger.warn('remarkable_page の呼び出しに失敗しました', { notebook: notebook.name, error: err instanceof Error ? err.message : String(err) });
     }
