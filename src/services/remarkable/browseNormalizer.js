@@ -108,7 +108,24 @@ function normalizeBrowse(content) {
   const data = unwrap(content);
   const list = toArray(data);
 
-  if (list.length === 0) {
+  // 配列が得られない場合は、オブジェクトの値をノート候補として扱うフォールバックを行う
+  let effectiveList = list;
+  if (effectiveList.length === 0 && data && typeof data === 'object') {
+    const candidates = [];
+    for (const [k, v] of Object.entries(data)) {
+      if (v && typeof v === 'object') {
+        const entry = Object.assign({}, v);
+        if (entry.path == null) entry.path = k;
+        candidates.push(entry);
+      }
+    }
+    if (candidates.length > 0) {
+      effectiveList = candidates;
+      logger.info('remarkable_browse: object-map 形式の応答を配列へ変換しました', { candidates: candidates.length });
+    }
+  }
+
+  if (effectiveList.length === 0) {
     logger.warn('remarkable_browse からノート一覧を取得できませんでした');
     return [];
   }
@@ -116,7 +133,7 @@ function normalizeBrowse(content) {
   /** @type {import('./types').Notebook[]} */
   const notebooks = [];
 
-  for (const raw of list) {
+  for (const raw of effectiveList) {
     if (!raw || typeof raw !== 'object') continue;
     if (isFolder(raw)) continue;
 
