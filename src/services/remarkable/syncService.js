@@ -202,10 +202,6 @@ class RemarkableSyncService {
   async syncNotebook(notebook, summary) {
     const cachedModified = cacheStore.getModified(notebook.path);
     const baseline = cacheStore.getBaseline(notebook.path);
-    // ここでまず remarkable_page を呼んで総ページ数を取得する（browse の値ではなく page を信頼する）
-    const totalPagesFromPage = await this.fetchTotalPages(notebook.path);
-    const totalPages = totalPagesFromPage != null ? totalPagesFromPage : notebook.totalPages;
-
     // modified が変わっていない場合はスキップ
     if (cachedModified != null && cachedModified === notebook.modified) {
       summary.skippedNotebooks += 1;
@@ -215,14 +211,54 @@ class RemarkableSyncService {
       });
       return;
     }
+    // modified が更新されているため、このノートに対して remarkable_page(page=1) を呼び、total_pages を取得する
+    logger.info('[reMarkable] remarkable_page', { document: notebook.name, page: 1 });
+    let pageContent = null;
+    try {
+      pageContent = await mcpClient.page({ path: notebook.path, page: 1 });
+    } catch (err) {
+      logger.warn('remarkable_page の呼び出しに失敗しました', { notebook: notebook.name, error: err instanceof Error ? err.message : String(err) });
+    }
 
-    // modified が更新されている場合のみ baseline と total_pages を比較する
-    // totalPages は上で page から取得済み
+    // 2. 生レスポンスをログ出力
+    try {
+      logger.info('raw remarkable_page response', {
+        textPreview: pageContent && pageContent.text ? String(pageContent.text).slice(0, 1000) : null,
+        jsonPreview: pageContent && pageContent.json ? (typeof pageContent.json === 'string' ? pageContent.json.slice(0, 1000) : JSON.stringify(pageContent.json).slice(0, 1000)) : null,
+        images: pageContent && Array.isArray(pageContent.images) ? pageContent.images.length : 0,
+      });
+    } catch (err) {
+      logger.warn('raw page logging failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    // 3. レスポンスから total_pages を取得
+    let totalPages = null;
+    if (pageContent) {
+      let data = pageContent.json != null ? pageContent.json : pageContent.text;
+      for (let depth = 0; depth < 2 && typeof data === 'string'; depth += 1) {
+        try { data = JSON.parse(data); } catch (e) { break; }
+      }
+      if (data && typeof data === 'object') {
+        const keys = ['total_pages', 'totalPages', 'page_count', 'pageCount', 'pages'];
+        for (const key of keys) {
+          const value = data[key];
+          if (value == null) continue;
+          if (Array.isArray(value)) { totalPages = value.length; break; }
+          const num = Number(value);
+          if (Number.isFinite(num) && num >= 0) { totalPages = Math.floor(num); break; }
+        }
+        if (totalPages == null && Array.isArray(data.pages)) totalPages = data.pages.length;
+      }
+    }
+
+    // 4. 取得結果をログ出力
+    logger.info('total_pages extracted', { notebook: notebook.name, total_pages: totalPages });
+
+    // 5. baseline と比較して処理対象ページを決定する
+    // フォールバック: page 結果が得られなければ browse の値、それも無ければ baseline 扱い
     if (totalPages == null) {
-      // ページ数が分からないと処理範囲を決められないため、キャッシュは更新せず次回に委ねる
-      summary.errors.push(`ノート: ${notebook.name} - total_pages を取得できませんでした`);
-      logger.error('total_pages を取得できないためスキップします', { notebook: notebook.name });
-      return;
+      totalPages = notebook.totalPages != null ? notebook.totalPages : baseline;
+      logger.warn('total_pages を取得できなかったためフォールバック値を使用します', { notebook: notebook.name, fallbackTotalPages: totalPages });
     }
 
     logger.info('更新を検知しました', {
