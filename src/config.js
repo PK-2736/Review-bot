@@ -1,3 +1,5 @@
+const path = require('path');
+
 require('dotenv').config();
 
 module.exports = {
@@ -58,17 +60,23 @@ module.exports = {
     userId: '726195003780628621',      // 対象ユーザーID
   },
   remarkable: {
-    // reMarkable ノートの自動復習化
+    // reMarkable ノートの自動レビュー（仕様: remarkable-review2.md）
     enabled: process.env.REMARKABLE_ENABLED === 'true',
-    syncTime: process.env.REMARKABLE_SYNC_TIME || '0 23 * * *', // 毎日23:00
+    // 自動レビューは毎日23:00（仕様で固定。cron形式で上書き可能）
+    syncTime: process.env.REMARKABLE_SYNC_TIME || '0 23 * * *',
     timezone: process.env.REMARKABLE_TIMEZONE || 'Asia/Tokyo',
-    projectPrefix: process.env.REMARKABLE_PROJECT_PREFIX || '', // Todoistプロジェクト名の接頭辞
+    // remarkable_browse を実行するルートパス（仕様: remarkable_browse("/")）
+    browseRoot: '/',
+    // cache.json の保存先（baseline / modified を保持する唯一のキャッシュ）
+    cacheFile: process.env.REMARKABLE_CACHE_FILE
+      || path.join(__dirname, '..', 'data', 'cache.json'),
     mcp: {
-      // MCP側で reMarkable 認証・データ取得・Google Vision OCR まで実施し、OCR済みテキストを返す
+      // remarkable-mcp（MCP Streamable HTTP / JSON-RPC 2.0）
       url: process.env.REMARKABLE_MCP_URL || 'https://mcp.recrubo.net',
       token: process.env.REMARKABLE_MCP_TOKEN,
     },
     gemini: {
+      // Gemini Vision がページ画像のOCR・要約・TODO生成をまとめて担当する
       apiKey: process.env.GEMINI_API_KEY,
       model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     },

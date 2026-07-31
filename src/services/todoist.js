@@ -3,6 +3,28 @@ const config = require('../config');
 const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
 const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
+/**
+ * Todoist API 由来のエラー
+ *
+ * HTTPステータスやレスポンス本文、独自エラーコードを型付きで保持する。
+ */
+class TodoistError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ httpStatusCode?: number, responseData?: any, code?: string }} [details]
+   */
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'TodoistError';
+    /** @type {number|undefined} HTTPステータスコード */
+    this.httpStatusCode = details.httpStatusCode;
+    /** @type {any} レスポンス本文 */
+    this.responseData = details.responseData;
+    /** @type {string|undefined} 独自エラーコード */
+    this.code = details.code;
+  }
+}
+
 function normalizeBaseUrl(value) {
   if (!value) return DEFAULT_API_BASE_URL;
   return value.trim().replace(/\/+$/, '');
@@ -102,10 +124,10 @@ function createTodoistClient(token, baseUrl) {
     const data = await parseResponse(response);
 
     if (!response.ok) {
-      const error = new Error('Todoist API request failed');
-      error.httpStatusCode = response.status;
-      error.responseData = data;
-      throw error;
+      throw new TodoistError('Todoist API request failed', {
+        httpStatusCode: response.status,
+        responseData: data,
+      });
     }
 
     return data;
@@ -288,9 +310,7 @@ class TodoistService {
 
         const msg = `Todoist project limit reached: ${projects.length} >= configured limit ${configuredLimit}. Will not attempt to create project.`;
         console.error(msg);
-        const err = new Error(msg);
-        err.code = 'TODOIST_PROJECT_LIMIT_REACHED';
-        throw err;
+        throw new TodoistError(msg, { code: 'TODOIST_PROJECT_LIMIT_REACHED' });
       }
 
       // Try creating new project (only if we didn't detect a configured limit or not exceeded)
@@ -309,10 +329,10 @@ class TodoistService {
               this.projectCache.set(projectName, fallbackProjectId);
               return fallbackProjectId;
             }
-            const err = new Error(`Todoist project limit reached while creating '${projectNameStr}'`);
-            err.code = 'TODOIST_PROJECT_LIMIT_REACHED';
             console.error('Todoist: project creation aborted due to account limit', { projectName: projectNameStr, response: createError.responseData });
-            throw err;
+            throw new TodoistError(`Todoist project limit reached while creating '${projectNameStr}'`, {
+              code: 'TODOIST_PROJECT_LIMIT_REACHED',
+            });
           }
         } catch (e) {
           // fallthrough
@@ -371,75 +391,25 @@ class TodoistService {
   }
 
   /**
-   * reMarkable 復習タスクを作成
-   * ノート名（教科名）ごとにプロジェクトを分け、Gemini が決めた期限・優先度で登録する。
+   * reMarkable ノート由来の TODO を1件作成
+   *
+   * Gemini が返した todo 配列の各要素をそのままタスクとして登録する。
+   * 期限や優先度は仕様に含まれないため設定しない。
+   *
    * @param {Object} payload
-   * @param {string} payload.projectName - プロジェクト名（教科名）
-   * @param {string} payload.content - タスク内容
-   * @param {Date} payload.dueDate - 期限日
-   * @param {number} [payload.priority=1] - 優先度（1-4, 4が最優先=P1）
+   * @param {string} payload.content - タスク内容（Gemini の todo 要素）
+   * @param {string} [payload.description] - 補足説明（ノート名・ページ番号など）
+   * @returns {Promise<Object>} 作成したタスク
    */
-  async createRemarkableTask(payload) {
-    const createTaskForProject = async (projectId) => {
-      const dueDateStr = formatLocalDate(payload.dueDate instanceof Date ? payload.dueDate : new Date(payload.dueDate));
-      const mainTask = await this.api.addTask({
-        content: payload.content,
-        description: payload.description,
-        projectId,
-        dueDate: dueDateStr,
-        priority: payload.priority || 1,
-        labels: ['復習', 'reMarkable'],
-      });
+  async createRemarkableTodo(payload) {
+    const projectId = await this.getOrCreateProject();
 
-      const created = { main: mainTask, followUps: [] };
-      if (payload.createFollowUps !== false) {
-        const offsets = [1, 7, 30];
-        for (const offset of offsets) {
-          try {
-            const d = new Date(payload.dueDate instanceof Date ? payload.dueDate : new Date(payload.dueDate));
-            d.setDate(d.getDate() + offset);
-            const fDue = formatLocalDate(d);
-            const fContent = `${payload.content} (復習: +${offset}日)`;
-            const fTask = await this.api.addTask({
-              content: fContent,
-              description: payload.description,
-              projectId,
-              dueDate: fDue,
-              priority: payload.priority || 1,
-              labels: ['復習', 'reMarkable'],
-            });
-            created.followUps.push({ task: fTask, offsetDays: offset });
-            await sleep(150);
-          } catch (err) {
-            console.error('Todoist: follow-up task creation failed', { projectName: payload.projectName, offset, error: err });
-          }
-        }
-      }
-      return created;
-    };
-
-    try {
-      let projectId;
-      try {
-        projectId = await this.getOrCreateProjectByName(payload.projectName);
-      } catch (error) {
-        if (error.code === 'TODOIST_PROJECT_LIMIT_REACHED' && payload.projectName !== config.review.defaultProjectName) {
-          console.warn('Todoist: project limit reached for notebook project, falling back to default review project', {
-            requestedProject: payload.projectName,
-            fallbackProjectName: config.review.defaultProjectName,
-          });
-          projectId = await this.getOrCreateProject();
-        } else {
-          throw error;
-        }
-      }
-
-      const created = await createTaskForProject(projectId);
-      return created;
-    } catch (error) {
-      console.error('Todoist reMarkable タスク作成エラー:', error);
-      throw error;
-    }
+    return this.api.addTask({
+      content: payload.content,
+      description: payload.description,
+      projectId,
+      labels: ['復習', 'reMarkable'],
+    });
   }
 
   /**

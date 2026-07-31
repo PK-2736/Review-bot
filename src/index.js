@@ -6,7 +6,7 @@ const doneCommand = require('./commands/done');
 const scheduleCommand = require('./commands/schedule');
 const reminderCommand = require('./commands/reminder');
 const classroomCommand = require('./commands/classroom');
-const remarkableCommand = require('./commands/remarkable');
+const remarkableSyncCommand = require('./commands/remarkableSync');
 const TodoScheduler = require('./scheduler');
 const todoistService = require('./services/todoist');
 
@@ -27,10 +27,10 @@ client.commands.set('done', doneCommand);
 client.commands.set('schedule', scheduleCommand);
 client.commands.set('reminder', reminderCommand);
 client.commands.set('classroom', classroomCommand);
-client.commands.set('remarkable', remarkableCommand);
+client.commands.set('remarkable_sync', remarkableSyncCommand);
 
 // スラッシュコマンドの登録
-const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON(), scheduleCommand.data.toJSON(), reminderCommand.data.toJSON(), classroomCommand.data.toJSON(), remarkableCommand.data.toJSON()];
+const commands = [todayCommand.data.toJSON(), doneCommand.data.toJSON(), scheduleCommand.data.toJSON(), reminderCommand.data.toJSON(), classroomCommand.data.toJSON(), remarkableSyncCommand.data.toJSON()];
 
 const rest = new REST({ version: '10' }).setToken(config.discord.token);
 

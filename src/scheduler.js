@@ -3,12 +3,11 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const todoistService = require('./services/todoist');
 const classroomService = require('./services/classroomService');
-const remarkableService = require('./services/remarkableService');
+const { syncService: remarkableSyncService, formatSyncResult } = require('./services/remarkable');
 const ScheduleStore = require('./services/scheduleStore');
 const ReminderStore = require('./services/reminderStore');
-const { createTodoEmbed, createTaskSummary } = require('./commands/today');
+const { createTodoEmbed } = require('./commands/today');
 
-const DAY_NUMBERS = { '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6, '日': 0 };
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 class TodoScheduler {
@@ -17,54 +16,34 @@ class TodoScheduler {
     this.jobs = [];
   }
 
+  /**
+   * reMarkable レビューの自動実行（毎日23:00）
+   *
+   * /remarkable_sync と全く同じ同期関数を呼び出す（処理を重複実装しない）。
+   */
   async syncRemarkableReviews() {
     try {
-      if (!remarkableService.isConfigured()) {
-        console.warn(`⚠️ reMarkable同期スキップ（設定不足: ${remarkableService.missingConfig().join(', ')})`);
+      if (!remarkableSyncService.isConfigured()) {
+        console.warn(`⚠️ reMarkableレビューをスキップ（設定不足: ${remarkableSyncService.missingConfig().join(', ')})`);
         return;
       }
 
-      console.log('[Scheduler] Daily sync started');
-      const result = await remarkableService.syncTodayReviews();
+      const summary = await remarkableSyncService.sync();
 
-      console.log(`[Scheduler] Changed pages: ${result.changedPages}`);
-      console.log(`[Scheduler] Todos created: ${result.todoistCreated || result.created}`);
-
-      if ((result.todoistCreated || result.created) > 0) {
-        console.log('[Scheduler] Cache updated');
-      }
-
-      console.log('[Scheduler] Finished');
-
-      console.log(`✅ reMarkable同期完了 (追加: ${result.created}, ノート: ${result.notebooks}, スキップ: ${result.skipped})`);
-
-      // 常に通知チャンネルへ簡易サマリを送信（追加があれば詳細、なければ情報のみ）
+      // 結果は通知チャンネルへ報告する（コマンド実行時と同じ整形を使う）
       try {
         const channel = await this.client.channels.fetch(config.notification.channelId);
-        if (channel) {
-          const embed = new EmbedBuilder()
-            .setColor(result.created > 0 ? '#4CAF50' : '#607D8B')
-            .setTitle(result.created > 0 ? '🖊️ reMarkable 復習を自動登録しました' : '🖊️ reMarkable 同期完了（新規タスクなし）')
-            .addFields(
-              { name: '➕ 追加', value: `${result.created}件`, inline: true },
-              { name: '📓 ノート', value: `${result.notebooks}冊`, inline: true },
-              { name: '⏭️ スキップ', value: `${result.skipped}件`, inline: true }
-            );
-
-          if (result.notebookNames && result.notebookNames.length > 0) {
-            embed.addFields({ name: '📚 対象ノート', value: result.notebookNames.join(' / '), inline: false });
-          }
-
-          embed.setTimestamp();
-          await channel.send({ embeds: [embed] });
+        if (channel && channel.isTextBased() && 'send' in channel) {
+          await channel.send({ content: formatSyncResult(summary) });
         } else {
           console.warn('通知チャンネルが取得できませんでした:', config.notification.channelId);
         }
-      } catch (notifyErr) {
-        console.error('通知送信エラー:', notifyErr);
+      } catch (notifyError) {
+        console.error('reMarkableレビュー結果の通知送信エラー:', notifyError);
       }
     } catch (error) {
-      console.error('reMarkable同期エラー:', error);
+      // 自動実行が失敗しても他のスケジュールジョブは継続させる
+      console.error('reMarkableレビュー自動実行エラー:', error);
     }
   }
 
@@ -171,7 +150,7 @@ class TodoScheduler {
   }
 
   /**
-   * reMarkable 復習同期を開始
+   * reMarkable レビューの自動実行（毎日23:00）を開始
    */
   startRemarkableSync() {
     if (!config.remarkable.enabled) {
@@ -186,7 +165,7 @@ class TodoScheduler {
     });
 
     this.jobs.push(remarkableJob);
-    console.log(`🖊️ reMarkable同期を設定しました: ${config.remarkable.syncTime}`);
+    console.log(`🖊️ reMarkable 自動レビューを設定しました: ${config.remarkable.syncTime}`);
   }
 
   /**
@@ -548,7 +527,7 @@ class TodoScheduler {
       const allTasks = await todoistService.getAllTasks();
       
       let completedCount = 0;
-      let pendingTasks = [];
+      const pendingTasks = [];
       let reviewTaskCount = 0;
       let otherTaskCount = 0;
 

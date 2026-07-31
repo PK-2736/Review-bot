@@ -1,0 +1,24 @@
+{
+  // 型チェック専用の設定（出力なし）。
+  // reMarkable レビュー機能（remarkable-review2.md の実装）を JSDoc 型注釈で検査する。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/config.js",
+    "src/services/remarkable/**/*.js",
+    "src/commands/remarkableSync.js"
+  ]
+}

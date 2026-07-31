@@ -1,7 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const ScheduleStore = require('../services/scheduleStore');
 
-const DAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const DAY_NUMBERS = { '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6, '日': 0 };
 
 module.exports = {
