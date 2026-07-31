@@ -185,7 +185,11 @@ class RemarkableMcpClient {
       return { text: '', json: null, images: [] };
     }
 
-    const content = Array.isArray(result.content) ? result.content : [];
+    const content = Array.isArray(result)
+      ? result
+      : Array.isArray(result.content)
+      ? result.content
+      : [];
     /** @type {string[]} */
     const texts = [];
     /** @type {Array<{ data: string, mimeType: string }>} */

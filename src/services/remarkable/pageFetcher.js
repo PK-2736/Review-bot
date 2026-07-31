@@ -55,7 +55,7 @@ async function fetchPage(notebookPath, pageNumber) {
   /** @type {Record<string, any>} remarkable_page のレスポンス JSON */
   const meta = content.json && typeof content.json === 'object' ? content.json : {};
 
-  // MCP の image コンテンツを優先し、無い場合は JSON 内の base64 を探す
+  // MCP の image / resource コンテンツを優先し、無い場合は JSON 内の base64 を探す
   const image = content.images[0];
   const data = image ? image.data : extractInlineImage(meta);
 
@@ -65,6 +65,13 @@ async function fetchPage(notebookPath, pageNumber) {
   }
 
   const mimeType = image ? image.mimeType : (meta.mime_type || 'image/png');
+
+  logger.info('image found', {
+    mimeType,
+    dataLength: data.length,
+    notebookPath,
+    pageNumber,
+  });
 
   return {
     // レスポンスがページ番号を返す場合はそれを信頼する

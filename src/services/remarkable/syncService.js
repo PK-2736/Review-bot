@@ -201,10 +201,26 @@ class RemarkableSyncService {
    * @returns {Promise<void>}
    */
   async syncNotebook(notebook, summary) {
-    const cachedModified = cacheStore.getModified(notebook.path);
-    const baseline = cacheStore.getBaseline(notebook.path);
+    const entry = cacheStore.getEntry(notebook.path);
+    logger.info('cache entry', {
+      notebook: notebook.name,
+      notebookPath: notebook.path,
+      cacheEntry: entry,
+    });
+
+    const cachedModified = entry ? entry.modified : null;
+    const baseline = entry ? entry.baseline : 0;
+    const baselineSource = entry ? 'cached baseline' : 'default 0';
+
     // modified が変わっていない場合はスキップ
     if (cachedModified != null && cachedModified === notebook.modified) {
+      summary.skippedNotebooks += 1;
+      logger.info('スキップ（modified に変更なし）', {
+        notebook: notebook.name,
+        modified: notebook.modified,
+        baseline,
+        baselineSource,
+      });
       summary.skippedNotebooks += 1;
       logger.info('スキップ（modified に変更なし）', {
         notebook: notebook.name,
