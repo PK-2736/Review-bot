@@ -106,7 +106,19 @@ class RemarkableSyncService {
     cacheStore.load();
 
     // ② remarkable_browse("/") でノート一覧を取得
-    const notebooks = normalizeBrowse(await mcpClient.browse(config.remarkable.browseRoot));
+    const rawBrowse = await mcpClient.browse(config.remarkable.browseRoot);
+    // デバッグ: 生のレスポンスを簡潔にログ出力して原因追跡を容易にする
+    try {
+      logger.info('raw remarkable_browse response', {
+        textPreview: rawBrowse.text ? String(rawBrowse.text).slice(0, 1000) : null,
+        jsonPreview: rawBrowse.json ? (typeof rawBrowse.json === 'string' ? rawBrowse.json.slice(0, 1000) : JSON.stringify(rawBrowse.json).slice(0, 1000)) : null,
+        images: Array.isArray(rawBrowse.images) ? rawBrowse.images.length : 0,
+      });
+    } catch (err) {
+      logger.warn('raw browse logging failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    const notebooks = normalizeBrowse(rawBrowse);
     logger.info('ノート一覧を取得しました', { notebooks: notebooks.length });
 
     // ③ ノートごとに同期。1冊の失敗で全体を中断しない
