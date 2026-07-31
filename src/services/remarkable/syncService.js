@@ -236,25 +236,31 @@ class RemarkableSyncService {
     // 3. レスポンスから total_pages を取得
     let totalPages = null;
     if (pageContent) {
-      let data = pageContent.json != null ? pageContent.json : pageContent.text;
-      for (let depth = 0; depth < 2 && typeof data === 'string'; depth += 1) {
-        try { data = JSON.parse(data); } catch (e) { break; }
-      }
-      if (data && typeof data === 'object') {
+      const rawText = pageContent.text ? String(pageContent.text) : '';
+      const rawJson = pageContent.json != null ? pageContent.json : null;
+
+      if (rawJson && typeof rawJson === 'object') {
         const keys = ['total_pages', 'totalPages', 'page_count', 'pageCount', 'pages'];
         for (const key of keys) {
-          const value = data[key];
+          const value = rawJson[key];
           if (value == null) continue;
           if (Array.isArray(value)) { totalPages = value.length; break; }
           const num = Number(value);
           if (Number.isFinite(num) && num >= 0) { totalPages = Math.floor(num); break; }
         }
-        if (totalPages == null && Array.isArray(data.pages)) totalPages = data.pages.length;
+        if (totalPages == null && Array.isArray(rawJson.pages)) totalPages = rawJson.pages.length;
+      }
+
+      if (totalPages == null && typeof rawText === 'string' && rawText.length > 0) {
+        const metadataMatch = rawText.match(/total_pages\s*=\s*(\d+)/i);
+        if (metadataMatch) {
+          totalPages = Number(metadataMatch[1]);
+        }
       }
     }
 
     // 4. 取得結果をログ出力
-    logger.info('total_pages extracted', { notebook: notebook.name, total_pages: totalPages });
+    logger.info('totalPages extracted', { notebook: notebook.name, totalPages });
 
     // 5. baseline と比較して処理対象ページを決定する
     // フォールバック: page 結果が得られなければ browse の値、それも無ければ baseline 扱い
