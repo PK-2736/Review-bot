@@ -137,7 +137,18 @@ function normalizeBrowse(content) {
     if (!raw || typeof raw !== 'object') continue;
     if (isFolder(raw)) continue;
 
-    const notebookPath = pick(raw, PATH_KEYS);
+    let notebookPath = pick(raw, PATH_KEYS);
+    // フォールバック: path が無ければ id / uuid を path として利用する
+    if (notebookPath == null) {
+      notebookPath = pick(raw, ['id', 'uuid', 'documentId']);
+    }
+    if (notebookPath == null) {
+      // 最後の手段として表示名を path にする（ユニーク性は保証されない）
+      const nameFallback = pick(raw, NAME_KEYS);
+      if (nameFallback != null) {
+        notebookPath = nameFallback;
+      }
+    }
     if (notebookPath == null) continue;
 
     const name = pick(raw, NAME_KEYS);
