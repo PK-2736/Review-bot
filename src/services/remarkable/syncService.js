@@ -153,6 +153,46 @@ class RemarkableSyncService {
   }
 
   /**
+   * remarkable_page を使ってドキュメントの総ページ数を取得する。
+   * @param {string} notebookPath
+   * @returns {Promise<number|null>}
+   */
+  async fetchTotalPages(notebookPath) {
+    try {
+      const content = await mcpClient.page({ path: notebookPath, page: 1 });
+      let data = content.json != null ? content.json : content.text;
+
+      // 文字列の場合は最大2段階まで JSON 展開
+      for (let depth = 0; depth < 2 && typeof data === 'string'; depth += 1) {
+        try {
+          data = JSON.parse(data);
+        } catch (err) {
+          break;
+        }
+      }
+
+      if (!data || typeof data !== 'object') return null;
+
+      const keys = ['total_pages', 'totalPages', 'page_count', 'pageCount', 'pages'];
+      for (const key of keys) {
+        const value = data[key];
+        if (value == null) continue;
+        if (Array.isArray(value)) return value.length;
+        const num = Number(value);
+        if (Number.isFinite(num) && num >= 0) return Math.floor(num);
+      }
+
+      // pages 配列がトップレベルにあるケース
+      if (Array.isArray(data.pages)) return data.pages.length;
+
+      return null;
+    } catch (error) {
+      logger.warn('remarkable_page から total_pages を取得できませんでした', { notebookPath, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }
+
+  /**
    * 1冊のノートを同期する。
    *
    * @param {import('./types').Notebook} notebook
@@ -162,6 +202,9 @@ class RemarkableSyncService {
   async syncNotebook(notebook, summary) {
     const cachedModified = cacheStore.getModified(notebook.path);
     const baseline = cacheStore.getBaseline(notebook.path);
+    // ここでまず remarkable_page を呼んで総ページ数を取得する（browse の値ではなく page を信頼する）
+    const totalPagesFromPage = await this.fetchTotalPages(notebook.path);
+    const totalPages = totalPagesFromPage != null ? totalPagesFromPage : notebook.totalPages;
 
     // modified が変わっていない場合はスキップ
     if (cachedModified != null && cachedModified === notebook.modified) {
@@ -174,7 +217,7 @@ class RemarkableSyncService {
     }
 
     // modified が更新されている場合のみ baseline と total_pages を比較する
-    const totalPages = notebook.totalPages;
+    // totalPages は上で page から取得済み
     if (totalPages == null) {
       // ページ数が分からないと処理範囲を決められないため、キャッシュは更新せず次回に委ねる
       summary.errors.push(`ノート: ${notebook.name} - total_pages を取得できませんでした`);
