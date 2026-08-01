@@ -1,5 +1,7 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const config = require('./config');
+// Always enable image dump for remarkable debug
+process.env.REMARKABLE_DUMP_IMAGE = '1';
 const reviewCommand = require('./commands/review');
 const todayCommand = require('./commands/today');
 const doneCommand = require('./commands/done');
