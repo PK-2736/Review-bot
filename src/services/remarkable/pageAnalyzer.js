@@ -143,7 +143,40 @@ async function analyzePage(params) {
         mimeType: params.image.mimeType,
       });
 
-      const analysis = normalizeAnalysis(parseJson(text));
+      logger.info('Gemini から返ってきた生レスポンスを受け取りました', {
+        notebook: params.notebookName,
+        page: params.page,
+        responsePreview: text.slice(0, 2000),
+      });
+
+      const parsed = parseJson(text);
+      logger.info('Gemini JSON パース後', {
+        notebook: params.notebookName,
+        page: params.page,
+        parsed,
+      });
+
+      const analysis = normalizeAnalysis(parsed);
+      logger.info('Gemini 解析結果 (正規化後)', {
+        notebook: params.notebookName,
+        page: params.page,
+        todoCount: analysis.todo.length,
+        title: analysis.title,
+        summary: analysis.summary,
+        todos: analysis.todo,
+      });
+
+      if (analysis.todo.length === 0) {
+        logger.warn('Gemini 解析結果で TODO が 0 件でした', {
+          notebook: params.notebookName,
+          page: params.page,
+          reason: 'normalizeAnalysis 後の todo 配列が空でした',
+          parsedTodoCount: Array.isArray(parsed.todo) ? parsed.todo.length : 'not-array',
+          parsedTitle: parsed.title,
+          parsedSummary: parsed.summary,
+        });
+      }
+
       return { analysis, durationMs: Date.now() - startedAt };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));

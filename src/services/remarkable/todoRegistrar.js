@@ -36,7 +36,19 @@ async function registerTodos(params) {
   const warnings = [];
   let created = 0;
 
+  logger.info('Todoist 登録直前', {
+    notebook: params.notebookName,
+    page: params.page,
+    todoCount: todos.length,
+    todos,
+  });
+
   if (todos.length === 0) {
+    logger.warn('Todoist 登録をスキップしました', {
+      notebook: params.notebookName,
+      page: params.page,
+      reason: 'Gemini 解析結果の todo 配列が空でした',
+    });
     return { created, warnings };
   }
 
@@ -58,12 +70,21 @@ async function registerTodos(params) {
     }
   }
 
-  logger.info('Todoist へ TODO を登録しました', {
-    notebook: params.notebookName,
-    page: params.page,
-    created,
-    failed: todos.length - created,
-  });
+  if (created === 0) {
+    logger.warn('Todoist へ TODO を登録できませんでした', {
+      notebook: params.notebookName,
+      page: params.page,
+      reason: '登録対象の todo が存在したが、すべての登録で失敗しました',
+      warnings,
+    });
+  } else {
+    logger.info('Todoist へ TODO を登録しました', {
+      notebook: params.notebookName,
+      page: params.page,
+      created,
+      failed: todos.length - created,
+    });
+  }
 
   return { created, warnings };
 }

@@ -1,4 +1,5 @@
 const config = require('../../config');
+const logger = require('./logger');
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -60,6 +61,15 @@ class GeminiVisionClient {
       throw new Error('GEMINI_API_KEY が設定されていません');
     }
 
+    const promptPreview = String(params.prompt || '').slice(0, 400);
+    const imageDataLength = typeof params.imageData === 'string' ? params.imageData.length : 0;
+
+    logger.info('Gemini API へ送信します', {
+      promptPreview,
+      mimeType: params.mimeType,
+      imageDataLength,
+    });
+
     const body = {
       contents: [{
         role: 'user',
@@ -90,7 +100,13 @@ class GeminiVisionClient {
       throw new Error(`Gemini request failed: ${message}`);
     }
 
-    return this.extractText(data);
+    const text = this.extractText(data);
+    logger.info('Gemini API から生レスポンスを受信しました', {
+      responsePreview: text.slice(0, 2000),
+      responseLength: text.length,
+    });
+
+    return text;
   }
 
   /**
