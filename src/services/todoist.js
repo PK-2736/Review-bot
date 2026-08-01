@@ -27,7 +27,14 @@ class TodoistError extends Error {
 
 function normalizeBaseUrl(value) {
   if (!value) return DEFAULT_API_BASE_URL;
-  return value.trim().replace(/\/+$/, '');
+
+  let normalized = value.trim().replace(/\/+$/, '');
+  if (/\/api\/(?:v1|v9)(?:\/|$)/i.test(normalized) || /\/sync\/v9(?:\/|$)/i.test(normalized)) {
+    console.warn('Todoist API base URL appears to use a legacy endpoint; rewriting to REST v2:', normalized);
+    normalized = DEFAULT_API_BASE_URL;
+  }
+
+  return normalized;
 }
 
 function mapPayloadForApi(payload) {
@@ -133,28 +140,22 @@ function createTodoistClient(token, baseUrl) {
       options.body = JSON.stringify(payload);
     }
 
-    // Log request (task content only when available)
+    const fullUrl = url.toString();
     try {
-      const { content } = payload || {};
       const rmLogger = require('./remarkable/logger');
-      if (typeof content === 'string') {
-        rmLogger.info('Todoist API へ送信', { method, path, content });
-      } else {
-        rmLogger.info('Todoist API へ送信', { method, path, content: typeof content });
-      }
+      rmLogger.info('Todoist API request', { method, url: fullUrl, path, payload: payload ? (payload.content ? { ...payload, content: payload.content } : payload) : null });
     } catch (e) {
       // swallow logging errors
       // eslint-disable-next-line no-console
       console.warn('Todoist request logging failed', e && e.message ? e.message : e);
     }
 
-    const response = await fetch(url.toString(), options);
+    const response = await fetch(fullUrl, options);
     const data = await parseResponse(response);
 
-    // Log response status and body
     try {
       const rmLogger = require('./remarkable/logger');
-      rmLogger.info('Todoist API 応答受信', { method, path, status: response.status, responseData: data });
+      rmLogger.info('Todoist API response', { method, url: fullUrl, path, status: response.status, responseData: data });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('Todoist response logging failed', e && e.message ? e.message : e);
