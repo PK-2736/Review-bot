@@ -1,5 +1,7 @@
 const mcpClient = require('./mcpClient');
 const logger = require('./logger');
+const fs = require('fs');
+const path = require('path');
 
 /** 画像 base64 が入り得るキーの候補（content に image が無い実装への保険） */
 const IMAGE_DATA_KEYS = ['image', 'image_base64', 'imageBase64', 'data', 'base64', 'png'];
@@ -88,6 +90,21 @@ async function fetchPage(notebookPath, pageNumber, documentIdentifier) {
     notebookPath,
     pageNumber,
   });
+
+  // デバッグ用: Base64 画像をファイルへダンプする（環境変数で有効化）
+  try {
+    if (process.env.REMARKABLE_DUMP_IMAGE === '1') {
+      const dumpDir = path.resolve(process.cwd(), 'tmp', 'remarkable-debug');
+      fs.mkdirSync(dumpDir, { recursive: true });
+      const filename = `${notebookPath.replace(/[^a-z0-9-_\.]/gi, '_')}_p${pageNumber}.png`;
+      const outPath = path.join(dumpDir, filename);
+      const buffer = Buffer.from(String(data), 'base64');
+      fs.writeFileSync(outPath, buffer);
+      logger.info('画像をディスクに保存しました', { outPath, notebookPath, pageNumber, size: buffer.length });
+    }
+  } catch (err) {
+    logger.warn('画像のディスク保存に失敗しました', { notebookPath, pageNumber, error: String(err) });
+  }
 
   return {
     // レスポンスがページ番号を返す場合はそれを信頼する

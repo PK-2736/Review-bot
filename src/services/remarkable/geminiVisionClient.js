@@ -85,6 +85,38 @@ class GeminiVisionClient {
       },
     };
 
+    // ログ: request body のプレビュー（画像部分は先頭100文字と長さのみ）
+    try {
+      const partPreview = (parts => {
+        try {
+          return parts.map(p => {
+            if (p.text) return { type: 'text', textPreview: String(p.text).slice(0, 200) };
+            if (p.inline_data) {
+              const dataStr = typeof p.inline_data.data === 'string' ? p.inline_data.data : '';
+              return {
+                type: 'inline_data',
+                mime_type: p.inline_data.mime_type,
+                dataPreview: dataStr.slice(0, 100),
+                dataLength: dataStr.length,
+              };
+            }
+            return { type: 'unknown' };
+          });
+        } catch (e) {
+          return [{ type: 'preview_error', error: String(e) }];
+        }
+      })(body.contents[0].parts);
+
+      logger.info('Gemini request body preview', {
+        model: this.model,
+        url: this.buildUrl(),
+        contentsStructure: body.contents.map(c => ({ role: c.role, partsCount: Array.isArray(c.parts) ? c.parts.length : 0 })),
+        parts: partPreview,
+      });
+    } catch (err) {
+      logger.warn('Gemini request preview の生成に失敗しました', { error: String(err) });
+    }
+
     const response = await fetch(this.buildUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
