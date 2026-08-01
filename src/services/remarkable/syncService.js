@@ -244,7 +244,7 @@ class RemarkableSyncService {
 
     try {
       // remarkable_page（include_ocr=false）でページ画像を取得
-      const image = await pageFetcher.fetchPage(notebook.path, pageNumber);
+      const image = await pageFetcher.fetchPage(notebook.path, pageNumber, notebook.name);
 
       // Gemini Vision で OCR・要約・重要ポイント・TODO・タイトルを生成
       const { analysis, durationMs: geminiDurationMs } = await pageAnalyzer.analyzePage({

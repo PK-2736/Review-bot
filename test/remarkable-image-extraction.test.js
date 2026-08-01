@@ -41,3 +41,23 @@ test('fetchPage returns image data from a resource blob payload', async () => {
     mcpClient.callTool = originalCallTool;
   }
 });
+
+test('fetchPage uses the provided document identifier for remarkable_page', async () => {
+  const originalPage = mcpClient.page;
+  const seen = [];
+  mcpClient.page = async (args) => {
+    seen.push(args.document);
+    return {
+      text: '',
+      json: null,
+      images: [{ data: 'resource-blob-data', mimeType: 'image/png' }],
+    };
+  };
+
+  try {
+    await pageFetcher.fetchPage('/notebooks/demo', 1, '物理');
+    assert.deepEqual(seen, ['物理']);
+  } finally {
+    mcpClient.page = originalPage;
+  }
+});

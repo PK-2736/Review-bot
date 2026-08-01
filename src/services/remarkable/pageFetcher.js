@@ -47,11 +47,13 @@ function stripDataUri(data) {
  *
  * @param {string} notebookPath - ノートのパス
  * @param {number} pageNumber - ページ番号
+ * @param {string} [documentIdentifier] - remarkable_page に渡す document 引数（ノート名/パス）
  * @returns {Promise<import('./types').PageImage>}
  * @throws {Error} 画像を取得できなかった場合
  */
-async function fetchPage(notebookPath, pageNumber) {
-  const content = await mcpClient.page({ document: notebookPath, page: pageNumber, include_ocr: false });
+async function fetchPage(notebookPath, pageNumber, documentIdentifier) {
+  const document = documentIdentifier || notebookPath;
+  const content = await mcpClient.page({ document, page: pageNumber, include_ocr: false });
 
   /** @type {Record<string, any>} remarkable_page のレスポンス JSON */
   const meta = content.json && typeof content.json === 'object' ? content.json : {};
