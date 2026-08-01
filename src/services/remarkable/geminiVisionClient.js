@@ -2,6 +2,8 @@ const config = require('../../config');
 const logger = require('./logger');
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Gemini Vision API クライアント（低レベル）。
@@ -146,6 +148,32 @@ class GeminiVisionClient {
     }
 
     const data = await response.json().catch(() => null);
+
+    // Save and log the entire Gemini response for debugging (user requested full response)
+    try {
+      const dumpDir = path.resolve(process.cwd(), 'tmp', 'remarkable-debug');
+      fs.mkdirSync(dumpDir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `gemini-response-${ts}.json`;
+      const outPath = path.join(dumpDir, filename);
+      fs.writeFileSync(outPath, JSON.stringify(data, null, 2));
+
+      // Log important fields as requested
+      const candidates = data && data.candidates ? data.candidates : null;
+      const finishReason = data && (data.finishReason || data.finish_reason || (Array.isArray(data.candidates) && data.candidates[0] && data.candidates[0].finish_reason)) ? (data.finishReason || data.finish_reason || (data.candidates[0] && data.candidates[0].finish_reason)) : null;
+      const promptFeedback = data && data.promptFeedback ? data.promptFeedback : (data && data.prompt_feedback ? data.prompt_feedback : null);
+      const usageMetadata = data && data.usageMetadata ? data.usageMetadata : (data && data.usage_metadata ? data.usage_metadata : null);
+
+      logger.info('Gemini API からの全文レスポンスを保存しました', { outPath });
+      logger.info('Gemini 応答の詳細', {
+        candidates: Array.isArray(candidates) ? candidates.length : candidates,
+        finishReason,
+        promptFeedback,
+        usageMetadata,
+      });
+    } catch (err) {
+      logger.warn('Gemini レスポンスの保存/ログに失敗しました', { error: String(err) });
+    }
 
     if (!response.ok) {
       const message = data && data.error && data.error.message
