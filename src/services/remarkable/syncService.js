@@ -271,10 +271,10 @@ class RemarkableSyncService {
         page: pageNumber,
         analysis,
       });
-      summary.warnings.push(...registered.warnings);
-
-      if (registered.warnings.length > 0) {
-        throw new Error(registered.warnings.join('; '));
+      // registerTodos は個別失敗を warnings に蓄積して返す。
+      // 警告はページ処理全体の失敗としない（仕様どおり継続する）。
+      if (registered.warnings && registered.warnings.length > 0) {
+        summary.warnings.push(...registered.warnings);
       }
 
       const durationMs = Date.now() - startedAt;

@@ -55,29 +55,30 @@ async function registerTodos(params) {
   const description = buildDescription(params);
 
     for (const todo of todos) {
-    try {
-      // Notebook 名をプロジェクト名として渡す。プロジェクトが存在しなければ初回のみ作成される。
-      const task = await todoistService.createRemarkableTodo({ content: todo, description }, params.notebookName);
-      created += 1;
-      logger.info('Todoist にタスクを作成しました', { notebook: params.notebookName, page: params.page, taskId: task && task.id ? task.id : null, content: todo });
-    } catch (error) {
-      // ログには status / message / stack を含める
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error && error.stack ? error.stack : null;
-      const status = error && error.httpStatusCode ? error.httpStatusCode : (error && error.status ? error.status : null);
+      try {
+        // Notebook 名をプロジェクト名として渡す。プロジェクトが存在しなければ初回のみ作成される。
+        const task = await todoistService.createRemarkableTodo({ content: todo, description }, params.notebookName);
+        created += 1;
+        logger.info('Todoist にタスクを作成しました', { notebook: params.notebookName, page: params.page, taskId: task && task.id ? task.id : null, content: todo });
+      } catch (error) {
+        // ログには status / message / stack を含める
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error && error.stack ? error.stack : null;
+        const status = error && error.httpStatusCode ? error.httpStatusCode : (error && error.status ? error.status : null);
 
-      logger.error('Todoist への登録に失敗しました', {
-        notebook: params.notebookName,
-        page: params.page,
-        todo,
-        status,
-        message,
-        stack,
-      });
+        logger.error('Todoist への登録に失敗しました (個別タスク) - 続行します', {
+          notebook: params.notebookName,
+          page: params.page,
+          todo,
+          status,
+          message,
+          stack,
+        });
 
-      // 例外は握りつぶさず呼び出し元へ伝播させる
-      throw error;
-    }
+        // 呼び出し元に戻すのではなく warnings に追加して処理を継続する
+        warnings.push(`Failed to create todo: ${message}`);
+        continue;
+      }
   }
 
   if (created === 0) {
