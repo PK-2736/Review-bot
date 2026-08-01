@@ -548,8 +548,9 @@ class TodoistService {
    * @returns {Promise<Object>} 作成したタスク
    */
   async createRemarkableTodo(payload, projectName) {
-    // projectName が指定されていればその名前のプロジェクトを取得／作成（初回のみ作成）
-    const projectId = projectName ? await this.getOrCreateProjectByName(projectName) : await this.getOrCreateProject();
+    // TODO は常に固定の review プロジェクトに登録する。
+    // notebook 名ごとのプロジェクト作成はプロジェクト数上限に影響するため避ける。
+    const projectId = await this.getOrCreateProjectByName(config.review.defaultProjectName);
 
     const taskPayload = await this.resolveLabelIds({
       content: payload.content,

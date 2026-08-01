@@ -12,7 +12,7 @@ module.exports = {
     apiBaseUrl: process.env.TODOIST_API_BASE_URL,
   },
   review: {
-    defaultProjectName: process.env.DEFAULT_PROJECT_NAME || '復習タスク',
+    defaultProjectName: process.env.DEFAULT_PROJECT_NAME || 'review',
     // 復習間隔（日数）
     intervals: {
       normal: [1, 7, 30],                  // 通常モード（次の日・1週間後・1ヵ月後）
