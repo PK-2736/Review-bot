@@ -57,8 +57,21 @@ async function fetchPage(notebookPath, pageNumber) {
   const meta = content.json && typeof content.json === 'object' ? content.json : {};
 
   // MCP の image / resource コンテンツを優先し、無い場合は JSON 内の base64 を探す
-  const image = content.images[0];
+  const image = Array.isArray(content.images) ? content.images[0] : null;
   const data = image ? image.data : extractInlineImage(meta);
+
+  logger.info('remarkable_page fetchPage received', {
+    notebookPath,
+    pageNumber,
+    imageCount: Array.isArray(content.images) ? content.images.length : 0,
+    textLength: typeof content.text === 'string' ? content.text.length : 0,
+    jsonType: content.json != null ? typeof content.json : null,
+    imagePreview: image ? { mimeType: image.mimeType, dataLength: image.data.length } : null,
+    metaKeys: Object.keys(meta || {}),
+    contentPreview: typeof content.text === 'string'
+      ? content.text.slice(0, 400)
+      : JSON.stringify(content).slice(0, 1200),
+  });
 
   if (!data) {
     const hint = meta.ocr_message || meta._hint;

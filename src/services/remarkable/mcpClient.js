@@ -185,11 +185,22 @@ class RemarkableMcpClient {
       return { text: '', json: null, images: [] };
     }
 
-    const content = Array.isArray(result)
-      ? result
-      : Array.isArray(result.content)
-      ? result.content
-      : [];
+    const collectContentItems = (source) => {
+      if (!source || typeof source !== 'object') return [];
+      if (Array.isArray(source)) return source;
+      if (Array.isArray(source.content)) return source.content;
+      if (Array.isArray(source.contents)) return source.contents;
+      if (Array.isArray(source.items)) return source.items;
+      if (Array.isArray(source.resources)) return source.resources;
+      if (source.content && typeof source.content === 'object') return [source.content];
+      if (source.result && typeof source.result === 'object') {
+        const nested = collectContentItems(source.result);
+        if (nested.length > 0) return nested;
+      }
+      return [];
+    };
+
+    const content = collectContentItems(result);
     /** @type {string[]} */
     const texts = [];
     /** @type {Array<{ data: string, mimeType: string }>} */
@@ -232,6 +243,17 @@ class RemarkableMcpClient {
     if (images.length === 0) {
       collectResourceImage(result);
     }
+
+    logger.info('remarkable_mcp extractContent', {
+      resultType: Array.isArray(result) ? 'array' : typeof result,
+      contentCount: content.length,
+      imageCount: images.length,
+      hasStructuredContent: result && typeof result === 'object' && result.structuredContent !== undefined,
+      resultPreview: typeof result === 'string'
+        ? result.slice(0, 400)
+        : JSON.stringify(result).slice(0, 1200),
+      imagesPreview: images.slice(0, 3).map((image) => ({ mimeType: image.mimeType, dataLength: image.data.length })),
+    });
 
     // structuredContent があればそれを JSON として優先採用する（画像は content 側から取る）
     if (result.structuredContent !== undefined) {
