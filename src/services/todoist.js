@@ -1,6 +1,6 @@
 const config = require('../config');
 
-const DEFAULT_API_BASE_URL = 'https://api.todoist.com/rest/v2';
+const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
 const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
 /**
@@ -181,7 +181,7 @@ function createTodoistClient(token, baseUrl) {
   return {
     getProjects: () => request('GET', 'projects'),
     addProject: (payload) => request('POST', 'projects', mapPayloadForApi(payload)),
-    getTasks: (params) => request('GET', 'https://api.todoist.com/api/v1/tasks', undefined, mapParamsForApi(params)),
+    getTasks: (params) => request('GET', 'tasks', undefined, mapParamsForApi(params)),
     addTask: (payload) => request('POST', 'tasks', mapPayloadForApi(payload)),
     updateTask: (id, payload) => request('POST', `tasks/${id}`, mapPayloadForApi(payload)),
     closeTask: (id) => request('POST', `tasks/${id}/close`),
