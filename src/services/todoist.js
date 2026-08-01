@@ -218,6 +218,13 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+function buildReviewTaskDescription(baseDescription, dueDateStr) {
+  const lines = [];
+  if (baseDescription) lines.push(String(baseDescription).trim());
+  lines.push(`復習日: ${dueDateStr}`);
+  return lines.join('\n');
+}
+
 function normalizeTasksResponse(data) {
   if (Array.isArray(data)) return data;
   if (!data) return [];
@@ -530,13 +537,13 @@ class TodoistService {
   /**
    * reMarkable ノート由来の TODO を1件作成
    *
-   * Gemini が返した todo 配列の各要素をそのままタスクとして登録する。
-   * 期限や優先度は仕様に含まれないため設定しない。
+   * Gemini が返した todo 配列の各要素を3件の復習タスクとして登録する。
+   * 各タスクは1日後、7日後、30日後が期限となり、内容にも日付が付与されます。
    *
    * @param {Object} payload
    * @param {string} payload.content - タスク内容（Gemini の todo 要素）
    * @param {string} [payload.description] - 補足説明（ノート名・ページ番号など）
-   * @returns {Promise<Object>} 作成したタスク
+   * @returns {Promise<{tasks:Array,failedDetails:Array}>} 作成結果
    */
   /**
    * reMarkable ノート由来の TODO を1件作成
@@ -545,22 +552,40 @@ class TodoistService {
    * @param {string} payload.content - タスク内容（Gemini の todo 要素）
    * @param {string} [payload.description] - 補足説明（ノート名・ページ番号など）
    * @param {string} [projectName] - 任意のプロジェクト名（指定があればそのプロジェクトを使用／初回のみ作成）
-   * @returns {Promise<Object>} 作成したタスク
+   * @returns {Promise<{tasks:Array,failedDetails:Array}>} 作成結果
    */
   async createRemarkableTodo(payload, projectName) {
     // TODO は常に固定の review プロジェクトに登録する。
     // notebook 名ごとのプロジェクト作成はプロジェクト数上限に影響するため避ける。
     const projectId = await this.getOrCreateProjectByName(config.review.defaultProjectName);
+    const baseContent = String(payload.content || '').trim();
+    const baseDescription = payload.description ? String(payload.description).trim() : '';
+    const reviewOffsets = [1, 7, 30];
+    const createdTasks = [];
+    const failedDetails = [];
 
-    const taskPayload = await this.resolveLabelIds({
-      content: payload.content,
-      description: payload.description,
-      projectId,
-      priority: 1,
-      labels: ['reMarkable', '復習'],
-    });
+    for (const offset of reviewOffsets) {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + offset);
+      const dueDateStr = formatLocalDate(dueDate);
+      const taskPayload = await this.resolveLabelIds({
+        content: `${baseContent} (${dueDateStr})`,
+        description: buildReviewTaskDescription(baseDescription, dueDateStr),
+        projectId,
+        priority: 1,
+        dueDate: dueDateStr,
+        labels: ['reMarkable', '復習'],
+      });
 
-    return this.api.addTask(taskPayload);
+      try {
+        const task = await this.api.addTask(taskPayload);
+        createdTasks.push(task);
+      } catch (error) {
+        failedDetails.push({ dueDate: dueDateStr, error });
+      }
+    }
+
+    return { tasks: createdTasks, failedDetails };
   }
 
   /**

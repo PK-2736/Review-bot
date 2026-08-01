@@ -56,12 +56,39 @@ async function registerTodos(params) {
 
     for (const todo of todos) {
       try {
-        // Notebook 名をプロジェクト名として渡す。プロジェクトが存在しなければ初回のみ作成される。
-        const task = await todoistService.createRemarkableTodo({ content: todo, description }, params.notebookName);
-        created += 1;
-        logger.info('Todoist にタスクを作成しました', { notebook: params.notebookName, page: params.page, taskId: task && task.id ? task.id : null, content: todo });
+        const result = await todoistService.createRemarkableTodo({ content: todo, description }, params.notebookName);
+        const createdCount = Array.isArray(result.tasks) ? result.tasks.length : 0;
+        created += createdCount;
+
+        if (createdCount > 0) {
+          logger.info('Todoist にタスクを作成しました', {
+            notebook: params.notebookName,
+            page: params.page,
+            todo,
+            createdCount,
+          });
+        }
+
+        if (Array.isArray(result.failedDetails) && result.failedDetails.length > 0) {
+          for (const failure of result.failedDetails) {
+            const error = failure.error;
+            const message = error instanceof Error ? error.message : String(error);
+            const stack = error && error.stack ? error.stack : null;
+            const status = error && error.httpStatusCode ? error.httpStatusCode : (error && error.status ? error.status : null);
+
+            logger.error('Todoist への登録に失敗しました (個別スケジュールタスク) - 続行します', {
+              notebook: params.notebookName,
+              page: params.page,
+              todo,
+              dueDate: failure.dueDate,
+              status,
+              message,
+              stack,
+            });
+            warnings.push(`Failed to create todo for ${failure.dueDate}: ${message}`);
+          }
+        }
       } catch (error) {
-        // ログには status / message / stack を含める
         const message = error instanceof Error ? error.message : String(error);
         const stack = error && error.stack ? error.stack : null;
         const status = error && error.httpStatusCode ? error.httpStatusCode : (error && error.status ? error.status : null);
@@ -75,7 +102,6 @@ async function registerTodos(params) {
           stack,
         });
 
-        // 呼び出し元に戻すのではなく warnings に追加して処理を継続する
         warnings.push(`Failed to create todo: ${message}`);
         continue;
       }
@@ -89,11 +115,13 @@ async function registerTodos(params) {
       warnings,
     });
   } else {
+    const totalExpected = todos.length * 3;
     logger.info('Todoist へ TODO を登録しました', {
       notebook: params.notebookName,
       page: params.page,
       created,
-      failed: todos.length - created,
+      failed: Math.max(0, totalExpected - created),
+      expected: totalExpected,
     });
   }
 

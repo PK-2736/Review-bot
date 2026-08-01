@@ -1,3 +1,4 @@
+const { EmbedBuilder } = require('discord.js');
 const todoistService = require('../services/todoist');
 const config = require('../config');
 
@@ -18,24 +19,29 @@ module.exports = {
     try {
       await message.reply('⏳ 復習タスクを作成中...');
       
-      // 間隔復習タスクを作成
       const tasks = await todoistService.createReviewSeries(content);
       
       if (tasks.length > 0) {
         const intervals = config.review.intervals.normal;
-        let responseMessage = `✅ **${content}** の復習タスクを作成しました！\n\n`;
-        responseMessage += '📅 復習スケジュール:\n';
-        
-        intervals.forEach((interval, index) => {
+        const scheduleText = intervals.map((interval, index) => {
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + interval);
           const dateStr = dueDate.toLocaleDateString('ja-JP');
-          responseMessage += `${index + 1}回目: ${interval}日後 (${dateStr})\n`;
-        });
-        
-        responseMessage += '\n💡 Todoistで確認してください！';
-        
-        await message.reply(responseMessage);
+          return `${index + 1}回目: ${interval}日後 (${dateStr})`;
+        }).join('\n');
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ 復習タスクを作成しました')
+          .setDescription(`**${content}** の復習スケジュールを Todoist に登録しました。`)
+          .addFields(
+            { name: '復習対象', value: content, inline: false },
+            { name: 'スケジュール', value: scheduleText, inline: false },
+            { name: '確認方法', value: 'Todoist で `review` プロジェクトを確認してください。', inline: false },
+          )
+          .setColor(0x00AE86)
+          .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
       } else {
         await message.reply('❌ タスクの作成に失敗しました。');
       }
