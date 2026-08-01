@@ -120,14 +120,46 @@ function createTodoistClient(token, baseUrl) {
       options.body = JSON.stringify(payload);
     }
 
+    // Log request (task content only when available)
+    try {
+      const { content } = payload || {};
+      const rmLogger = require('./remarkable/logger');
+      if (typeof content === 'string') {
+        rmLogger.info('Todoist API へ送信', { method, path, content });
+      } else {
+        rmLogger.info('Todoist API へ送信', { method, path, content: typeof content });
+      }
+    } catch (e) {
+      // swallow logging errors
+      // eslint-disable-next-line no-console
+      console.warn('Todoist request logging failed', e && e.message ? e.message : e);
+    }
+
     const response = await fetch(url.toString(), options);
     const data = await parseResponse(response);
 
+    // Log response status and body
+    try {
+      const rmLogger = require('./remarkable/logger');
+      rmLogger.info('Todoist API 応答受信', { method, path, status: response.status, responseData: data });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('Todoist response logging failed', e && e.message ? e.message : e);
+    }
+
     if (!response.ok) {
-      throw new TodoistError('Todoist API request failed', {
+      const err = new TodoistError('Todoist API request failed', {
         httpStatusCode: response.status,
         responseData: data,
       });
+      try {
+        const rmLogger = require('./remarkable/logger');
+        rmLogger.error('Todoist API エラー', { method, path, status: response.status, responseData: data });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Todoist error logging failed', e && e.message ? e.message : e);
+      }
+      throw err;
     }
 
     return data;

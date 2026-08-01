@@ -56,17 +56,26 @@ async function registerTodos(params) {
 
   for (const todo of todos) {
     try {
-      await todoistService.createRemarkableTodo({ content: todo, description });
+      const task = await todoistService.createRemarkableTodo({ content: todo, description });
       created += 1;
+      logger.info('Todoist にタスクを作成しました', { notebook: params.notebookName, page: params.page, taskId: task && task.id ? task.id : null, content: todo });
     } catch (error) {
+      // ログには status / message / stack を含める
       const message = error instanceof Error ? error.message : String(error);
-      warnings.push(`Todoist: ${params.notebookName} p.${params.page} "${todo}" - ${message}`);
-      logger.warn('Todoist への登録に失敗しました（同期は継続します）', {
+      const stack = error && error.stack ? error.stack : null;
+      const status = error && error.httpStatusCode ? error.httpStatusCode : (error && error.status ? error.status : null);
+
+      logger.error('Todoist への登録に失敗しました', {
         notebook: params.notebookName,
         page: params.page,
         todo,
-        error: message,
+        status,
+        message,
+        stack,
       });
+
+      // 例外は握りつぶさず呼び出し元へ伝播させる
+      throw error;
     }
   }
 

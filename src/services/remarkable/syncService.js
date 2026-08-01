@@ -254,6 +254,18 @@ class RemarkableSyncService {
       });
 
       // Todoist へ登録（失敗はページの失敗として扱う）
+      // 呼び出し直前に todo 情報をログ出力して追跡しやすくする
+      try {
+        logger.info('Todoist 登録直前 (syncService)', {
+          notebook: notebook.name,
+          page: pageNumber,
+          todoCount: Array.isArray(analysis.todo) ? analysis.todo.length : 0,
+          todos: Array.isArray(analysis.todo) ? analysis.todo : [],
+        });
+      } catch (e) {
+        logger.warn('Todoist 登録前ログの生成に失敗しました', { error: String(e) });
+      }
+
       const registered = await todoRegistrar.registerTodos({
         notebookName: notebook.name,
         page: pageNumber,
