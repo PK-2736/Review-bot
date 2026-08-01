@@ -556,6 +556,7 @@ class TodoistService {
       description: payload.description,
       projectId,
       priority: 1,
+      labels: ['reMarkable', '復習'],
     });
 
     return this.api.addTask(taskPayload);
