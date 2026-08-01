@@ -1,4 +1,5 @@
 const mcpClient = require('./mcpClient');
+const logger = require('./logger');
 
 /** 画像 base64 が入り得るキーの候補（content に image が無い実装への保険） */
 const IMAGE_DATA_KEYS = ['image', 'image_base64', 'imageBase64', 'data', 'base64', 'png'];

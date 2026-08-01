@@ -1,7 +1,7 @@
 const config = require('../../config');
 const { cacheStore } = require('./cacheStore');
 const { normalizeBrowse } = require('./browseNormalizer');
-const { fetchPage } = require('./pageFetcher');
+const pageFetcher = require('./pageFetcher');
 const geminiVisionClient = require('./geminiVisionClient');
 const logger = require('./logger');
 const mcpClient = require('./mcpClient');
@@ -153,47 +153,6 @@ class RemarkableSyncService {
   }
 
   /**
-   * remarkable_page を使ってドキュメントの総ページ数を取得する。
-   * @param {string} notebookPath
-   * @returns {Promise<number|null>}
-   */
-  async fetchTotalPages(notebookIdentifier) {
-    try {
-      // notebookIdentifier は MCP が期待する document 引数（name や識別子）を渡す想定
-      const content = await mcpClient.page({ document: notebookIdentifier, page: 1, include_ocr: false });
-      let data = content.json != null ? content.json : content.text;
-
-      // 文字列の場合は最大2段階まで JSON 展開
-      for (let depth = 0; depth < 2 && typeof data === 'string'; depth += 1) {
-        try {
-          data = JSON.parse(data);
-        } catch (err) {
-          break;
-        }
-      }
-
-      if (!data || typeof data !== 'object') return null;
-
-      const keys = ['total_pages', 'totalPages', 'page_count', 'pageCount', 'pages'];
-      for (const key of keys) {
-        const value = data[key];
-        if (value == null) continue;
-        if (Array.isArray(value)) return value.length;
-        const num = Number(value);
-        if (Number.isFinite(num) && num >= 0) return Math.floor(num);
-      }
-
-      // pages 配列がトップレベルにあるケース
-      if (Array.isArray(data.pages)) return data.pages.length;
-
-      return null;
-    } catch (error) {
-      logger.warn('remarkable_page から total_pages を取得できませんでした', { notebookIdentifier, error: error instanceof Error ? error.message : String(error) });
-      return null;
-    }
-  }
-
-  /**
    * 1冊のノートを同期する。
    *
    * @param {import('./types').Notebook} notebook
@@ -210,6 +169,7 @@ class RemarkableSyncService {
 
     const cachedModified = entry ? entry.modified : null;
     const baseline = entry ? entry.baseline : 0;
+    const cachedTotalPages = entry && entry.totalPages != null ? entry.totalPages : null;
     const baselineSource = entry ? 'cached baseline' : 'default 0';
 
     // modified が変わっていない場合はスキップ
@@ -220,71 +180,15 @@ class RemarkableSyncService {
         modified: notebook.modified,
         baseline,
         baselineSource,
-      });
-      summary.skippedNotebooks += 1;
-      logger.info('スキップ（modified に変更なし）', {
-        notebook: notebook.name,
-        modified: notebook.modified,
+       cachedTotalPages,
       });
       return;
     }
-    // modified が更新されているため、このノートに対して remarkable_page(page=1) を呼び、total_pages を取得する
-    logger.info('[reMarkable] remarkable_page', { document: notebook.name, page: 1 });
-    let pageContent = null;
-    try {
-      // MCP の定義に合わせ、document 引数を渡す（name を使用）
-      pageContent = await mcpClient.page({ document: notebook.name, page: 1, include_ocr: false });
-    } catch (err) {
-      logger.warn('remarkable_page の呼び出しに失敗しました', { notebook: notebook.name, error: err instanceof Error ? err.message : String(err) });
-    }
 
-    // 2. 生レスポンスをログ出力
-    try {
-      logger.info('raw remarkable_page response', {
-        textPreview: pageContent && pageContent.text ? String(pageContent.text).slice(0, 1000) : null,
-        jsonPreview: pageContent && pageContent.json ? (typeof pageContent.json === 'string' ? pageContent.json.slice(0, 1000) : JSON.stringify(pageContent.json).slice(0, 1000)) : null,
-        images: pageContent && Array.isArray(pageContent.images) ? pageContent.images.length : 0,
-      });
-    } catch (err) {
-      logger.warn('raw page logging failed', { error: err instanceof Error ? err.message : String(err) });
-    }
-
-    // 3. レスポンスから total_pages を取得
-    let totalPages = null;
-    if (pageContent) {
-      const rawText = pageContent.text ? String(pageContent.text) : '';
-      const rawJson = pageContent.json != null ? pageContent.json : null;
-
-      if (rawJson && typeof rawJson === 'object') {
-        const keys = ['total_pages', 'totalPages', 'page_count', 'pageCount', 'pages'];
-        for (const key of keys) {
-          const value = rawJson[key];
-          if (value == null) continue;
-          if (Array.isArray(value)) { totalPages = value.length; break; }
-          const num = Number(value);
-          if (Number.isFinite(num) && num >= 0) { totalPages = Math.floor(num); break; }
-        }
-        if (totalPages == null && Array.isArray(rawJson.pages)) totalPages = rawJson.pages.length;
-      }
-
-      if (totalPages == null && typeof rawText === 'string' && rawText.length > 0) {
-        const metadataMatch = rawText.match(/total_pages\s*=\s*(\d+)/i);
-        if (metadataMatch) {
-          totalPages = Number(metadataMatch[1]);
-        }
-      }
-    }
-
-    // 4. 取得結果をログ出力
+    const totalPages = notebook.totalPages != null ? notebook.totalPages : (cachedTotalPages != null ? cachedTotalPages : baseline);
     logger.info('totalPages extracted', { notebook: notebook.name, totalPages });
 
-    // 5. baseline と比較して処理対象ページを決定する
-    // フォールバック: page 結果が得られなければ browse の値、それも無ければ baseline 扱い
-    if (totalPages == null) {
-      totalPages = notebook.totalPages != null ? notebook.totalPages : baseline;
-      logger.warn('total_pages を取得できなかったためフォールバック値を使用します', { notebook: notebook.name, fallbackTotalPages: totalPages });
-    }
-
+    // baseline と比較して処理対象ページを決定する
     logger.info('更新を検知しました', {
       notebook: notebook.name,
       baseline,
@@ -293,44 +197,35 @@ class RemarkableSyncService {
       modified: notebook.modified,
     });
 
-    // 新しいページが無い場合は modified のみ更新
-    if (totalPages <= baseline) {
-      cacheStore.update(notebook.path, { modified: notebook.modified });
-      summary.updatedNotebooks += 1;
-      summary.notebookNames.push(notebook.name);
-      logger.info('新規ページなし（modified のみ更新）', {
+    /** @type {number[]} 処理に失敗したページ番号 */
+    const failedPages = [];
+
+    if (totalPages > baseline) {
+      // 新しいページがある場合は baseline + 1 ～ total_pages を順に処理
+      for (let pageNumber = baseline + 1; pageNumber <= totalPages; pageNumber += 1) {
+        const succeeded = await this.syncPage(notebook, pageNumber, summary);
+        if (!succeeded) failedPages.push(pageNumber);
+      }
+    }
+
+    if (failedPages.length > 0) {
+      logger.warn('処理できなかったページがあるためキャッシュは更新しません', {
         notebook: notebook.name,
-        baseline,
-        totalPages,
+        failedPages: failedPages.join(','),
       });
       return;
     }
 
-    // 新しいページがある場合は baseline + 1 ～ total_pages を順に処理
-    /** @type {number[]} 処理に失敗したページ番号 */
-    const failedPages = [];
-
-    for (let pageNumber = baseline + 1; pageNumber <= totalPages; pageNumber += 1) {
-      const succeeded = await this.syncPage(notebook, pageNumber, summary);
-      if (!succeeded) failedPages.push(pageNumber);
-    }
-
-    // 処理終了後に baseline と modified を更新する
-    cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified });
+    // すべてのページ処理が成功した場合のみキャッシュを更新する
+    cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
     summary.updatedNotebooks += 1;
     summary.notebookNames.push(notebook.name);
 
-    if (failedPages.length > 0) {
-      logger.warn('処理できなかったページがあります', {
-        notebook: notebook.name,
-        failedPages: failedPages.join(','),
-      });
-    }
-
-    logger.info('ノートの処理が完了しました', {
+    logger.info('ノートの処理が完了したためキャッシュを更新しました', {
       notebook: notebook.name,
       baseline: totalPages,
       modified: notebook.modified,
+      totalPages,
     });
   }
 
@@ -349,7 +244,7 @@ class RemarkableSyncService {
 
     try {
       // remarkable_page（include_ocr=false）でページ画像を取得
-      const image = await fetchPage(notebook.path, pageNumber);
+      const image = await pageFetcher.fetchPage(notebook.path, pageNumber);
 
       // Gemini Vision で OCR・要約・重要ポイント・TODO・タイトルを生成
       const { analysis, durationMs: geminiDurationMs } = await pageAnalyzer.analyzePage({
@@ -358,13 +253,17 @@ class RemarkableSyncService {
         image,
       });
 
-      // Todoist へ登録（失敗は Warning のみ）
+      // Todoist へ登録（失敗はページの失敗として扱う）
       const registered = await todoRegistrar.registerTodos({
         notebookName: notebook.name,
         page: pageNumber,
         analysis,
       });
       summary.warnings.push(...registered.warnings);
+
+      if (registered.warnings.length > 0) {
+        throw new Error(registered.warnings.join('; '));
+      }
 
       const durationMs = Date.now() - startedAt;
 

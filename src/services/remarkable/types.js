@@ -13,6 +13,7 @@
  * @typedef {Object} CacheEntry
  * @property {number} baseline - 最後にレビュー済みのページ番号
  * @property {string|null} modified - remarkable_browse が返した最終更新日時
+ * @property {number|null} totalPages - remarkable_browse が返した総ページ数
  */
 
 /**

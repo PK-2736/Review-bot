@@ -195,6 +195,26 @@ class RemarkableMcpClient {
     /** @type {Array<{ data: string, mimeType: string }>} */
     const images = [];
 
+    const collectResourceImage = (item) => {
+      if (!item || typeof item !== 'object') return;
+
+      const resource = item.resource && typeof item.resource === 'object' ? item.resource : null;
+      const blob = typeof item.blob === 'string' && item.blob.length > 0
+        ? item.blob
+        : resource && typeof resource.blob === 'string' && resource.blob.length > 0
+          ? resource.blob
+          : null;
+      const mimeType = typeof item.mimeType === 'string' && item.mimeType.length > 0
+        ? item.mimeType
+        : resource && typeof resource.mimeType === 'string' && resource.mimeType.length > 0
+          ? resource.mimeType
+          : 'image/png';
+
+      if (blob) {
+        images.push({ data: String(blob), mimeType });
+      }
+    };
+
     for (const item of content) {
       if (!item || typeof item !== 'object') continue;
 
@@ -202,12 +222,15 @@ class RemarkableMcpClient {
         texts.push(item.text);
       } else if (item.type === 'image' && item.data) {
         images.push({ data: String(item.data), mimeType: item.mimeType || 'image/png' });
-      } else if (item.type === 'resource' && item.resource) {
-        if (typeof item.resource.text === 'string') texts.push(item.resource.text);
-        if (item.resource.blob) {
-          images.push({ data: String(item.resource.blob), mimeType: item.resource.mimeType || 'image/png' });
-        }
+      } else if (item.type === 'resource') {
+        const resource = item.resource && typeof item.resource === 'object' ? item.resource : null;
+        if (resource && typeof resource.text === 'string') texts.push(resource.text);
+        collectResourceImage(item);
       }
+    }
+
+    if (images.length === 0) {
+      collectResourceImage(result);
     }
 
     // structuredContent があればそれを JSON として優先採用する（画像は content 側から取る）

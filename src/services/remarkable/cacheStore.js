@@ -12,13 +12,14 @@ const logger = require('./logger');
  *
  * ```json
  * {
- *   "/Physics": { "baseline": 58, "modified": "2026-07-30T12:58:00.472000" },
- *   "/Math":    { "baseline": 24, "modified": "2026-07-29T18:00:00.000000" }
+ *   "/Physics": { "baseline": 58, "modified": "2026-07-30T12:58:00.472000", "total_pages": 80 },
+ *   "/Math":    { "baseline": 24, "modified": "2026-07-29T18:00:00.000000", "total_pages": 24 }
  * }
  * ```
  *
  * - baseline : 最後にレビュー済みのページ番号
  * - modified : remarkable_browse が返した最終更新日時
+ * - total_pages : remarkable_browse が返した総ページ数
  */
 class RemarkableCacheStore {
   /**
@@ -85,6 +86,7 @@ class RemarkableCacheStore {
       normalized[this.normalizePath(notebookPath)] = {
         baseline: this.normalizeBaseline(value.baseline),
         modified: value.modified != null ? String(value.modified) : null,
+        totalPages: this.normalizeTotalPages(value.total_pages != null ? value.total_pages : value.totalPages),
       };
     }
 
@@ -110,6 +112,17 @@ class RemarkableCacheStore {
   normalizeBaseline(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return 0;
+    return Math.floor(numeric);
+  }
+
+  /**
+   * total_pages を 0 以上の整数へ正規化する。
+   * @param {unknown} value
+   * @returns {number|null}
+   */
+  normalizeTotalPages(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
     return Math.floor(numeric);
   }
 
@@ -145,21 +158,24 @@ class RemarkableCacheStore {
   }
 
   /**
-   * baseline / modified を更新する（メモリ上のみ。保存は save() で行う）。
+   * baseline / modified / totalPages を更新する（メモリ上のみ。保存は save() で行う）。
    * @param {string} notebookPath
-   * @param {{ baseline?: number, modified?: string|null }} values
+   * @param {{ baseline?: number, modified?: string|null, totalPages?: number|null }} values
    * @returns {import('./types').CacheEntry}
    */
   update(notebookPath, values) {
     const cache = this.load();
     const key = this.normalizePath(notebookPath);
-    const entry = cache[key] || { baseline: 0, modified: null };
+    const entry = cache[key] || { baseline: 0, modified: null, totalPages: null };
 
     if (values.baseline !== undefined) {
       entry.baseline = this.normalizeBaseline(values.baseline);
     }
     if (values.modified !== undefined) {
       entry.modified = values.modified != null ? String(values.modified) : null;
+    }
+    if (values.totalPages !== undefined) {
+      entry.totalPages = this.normalizeTotalPages(values.totalPages);
     }
 
     cache[key] = entry;
