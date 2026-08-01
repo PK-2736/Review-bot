@@ -1,6 +1,6 @@
 const config = require('../config');
 
-const DEFAULT_API_BASE_URL = 'https://api.todoist.com/rest/v2';
+const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
 const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
 /**
@@ -27,14 +27,7 @@ class TodoistError extends Error {
 
 function normalizeBaseUrl(value) {
   if (!value) return DEFAULT_API_BASE_URL;
-
-  let normalized = value.trim().replace(/\/+$/, '');
-  if (/\/api\/(?:v1|v9)(?:\/|$)/i.test(normalized) || /\/sync\/v9(?:\/|$)/i.test(normalized)) {
-    console.warn('Todoist API base URL appears to use a legacy endpoint; rewriting to REST v2:', normalized);
-    normalized = DEFAULT_API_BASE_URL;
-  }
-
-  return normalized;
+  return value.trim().replace(/\/+$/, '');
 }
 
 function mapPayloadForApi(payload) {
