@@ -54,9 +54,10 @@ async function registerTodos(params) {
 
   const description = buildDescription(params);
 
-  for (const todo of todos) {
+    for (const todo of todos) {
     try {
-      const task = await todoistService.createRemarkableTodo({ content: todo, description });
+      // Notebook 名をプロジェクト名として渡す。プロジェクトが存在しなければ初回のみ作成される。
+      const task = await todoistService.createRemarkableTodo({ content: todo, description }, params.notebookName);
       created += 1;
       logger.info('Todoist にタスクを作成しました', { notebook: params.notebookName, page: params.page, taskId: task && task.id ? task.id : null, content: todo });
     } catch (error) {

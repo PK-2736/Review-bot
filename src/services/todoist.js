@@ -538,8 +538,19 @@ class TodoistService {
    * @param {string} [payload.description] - 補足説明（ノート名・ページ番号など）
    * @returns {Promise<Object>} 作成したタスク
    */
-  async createRemarkableTodo(payload) {
-    const projectId = await this.getOrCreateProject();
+  /**
+   * reMarkable ノート由来の TODO を1件作成
+   *
+   * @param {Object} payload
+   * @param {string} payload.content - タスク内容（Gemini の todo 要素）
+   * @param {string} [payload.description] - 補足説明（ノート名・ページ番号など）
+   * @param {string} [projectName] - 任意のプロジェクト名（指定があればそのプロジェクトを使用／初回のみ作成）
+   * @returns {Promise<Object>} 作成したタスク
+   */
+  async createRemarkableTodo(payload, projectName) {
+    // projectName が指定されていればその名前のプロジェクトを取得／作成（初回のみ作成）
+    const projectId = projectName ? await this.getOrCreateProjectByName(projectName) : await this.getOrCreateProject();
+
     const taskPayload = await this.resolveLabelIds({
       content: payload.content,
       description: payload.description,
