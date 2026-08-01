@@ -74,20 +74,34 @@ function parseJson(text) {
  * @param {unknown} value
  * @returns {string[]}
  */
-function toStringArray(value) {
-  if (!Array.isArray(value)) return [];
+function itemToString(item) {
+  if (typeof item === 'string') return item.trim();
+  if (item && typeof item === 'object') {
+    const record = /** @type {Record<string, any>} */ (item);
+    const candidate = record.title || record.content || record.text || record.name;
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+  return '';
+}
 
-  return value
-    .map((item) => {
-      if (typeof item === 'string') return item.trim();
-      if (item && typeof item === 'object') {
-        const record = /** @type {Record<string, any>} */ (item);
-        const candidate = record.title || record.content || record.text || record.name;
-        return typeof candidate === 'string' ? candidate.trim() : '';
-      }
-      return '';
-    })
-    .filter((item) => item.length > 0);
+function toStringArray(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(itemToString)
+      .filter((item) => item.length > 0);
+  }
+
+  if (value && typeof value === 'object') {
+    const s = itemToString(value);
+    return s.length > 0 ? [s] : [];
+  }
+
+  return [];
 }
 
 /**
@@ -100,18 +114,33 @@ function toText(value) {
 }
 
 /**
+ * `parsed` から最初に見つかったフィールド名を使って値を取得する。
+ * @param {Record<string, any>} parsed
+ * @param {string[]} names
+ * @returns {unknown}
+ */
+function coalesceField(parsed, names) {
+  for (const name of names) {
+    if (Object.prototype.hasOwnProperty.call(parsed, name)) {
+      return parsed[name];
+    }
+  }
+  return undefined;
+}
+
+/**
  * Gemini の出力を PageAnalysis へ正規化する。
  * @param {Record<string, any>} parsed
  * @returns {import('./types').PageAnalysis}
  */
 function normalizeAnalysis(parsed) {
   return {
-    title: toText(parsed.title),
-    summary: toText(parsed.summary),
-    important_points: toStringArray(parsed.important_points),
-    memorize: toStringArray(parsed.memorize),
-    todo: toStringArray(parsed.todo),
-    tags: toStringArray(parsed.tags),
+    title: toText(coalesceField(parsed, ['title', 'heading', 'name'])),
+    summary: toText(coalesceField(parsed, ['summary', 'description'])),
+    important_points: toStringArray(coalesceField(parsed, ['important_points', 'importantPoints', 'key_points', 'points'])),
+    memorize: toStringArray(coalesceField(parsed, ['memorize', 'memorize_points', 'memorizePoints', 'memorize_items'])),
+    todo: toStringArray(coalesceField(parsed, ['todo', 'todos', 'todo_items', 'tasks'])),
+    tags: toStringArray(coalesceField(parsed, ['tags', 'label', 'labels'])),
   };
 }
 

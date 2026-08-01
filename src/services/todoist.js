@@ -1,6 +1,6 @@
 const config = require('../config');
 
-const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
+const DEFAULT_API_BASE_URL = 'https://api.todoist.com/rest/v2';
 const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
 /**
@@ -440,7 +440,7 @@ class TodoistService {
       content: payload.content,
       description: payload.description,
       projectId,
-      labels: ['復習', 'reMarkable'],
+      priority: 1,
     });
   }
 
