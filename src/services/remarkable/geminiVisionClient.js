@@ -1,5 +1,6 @@
 const config = require('../../config');
 const logger = require('./logger');
+const { RetryableError } = require('./retryError');
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const fs = require('fs');
