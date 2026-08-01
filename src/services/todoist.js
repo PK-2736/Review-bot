@@ -1,6 +1,6 @@
 const config = require('../config');
 
-const DEFAULT_API_BASE_URL = 'https://api.todoist.com/api/v1';
+const DEFAULT_API_BASE_URL = 'https://api.todoist.com/rest/v2';
 const DEBUG_TODOIST = process.env.DEBUG_TODOIST === 'true';
 
 /**
@@ -134,24 +134,30 @@ function createTodoistClient(token, baseUrl) {
     }
 
     const fullUrl = url.toString();
+    let rmLogger;
     try {
-      const rmLogger = require('./remarkable/logger');
-      rmLogger.info('Todoist API request', { method, url: fullUrl, path, payload: payload ? (payload.content ? { ...payload, content: payload.content } : payload) : null });
+      rmLogger = require('./remarkable/logger');
     } catch (e) {
-      // swallow logging errors
-      // eslint-disable-next-line no-console
-      console.warn('Todoist request logging failed', e && e.message ? e.message : e);
+      rmLogger = undefined;
+    }
+
+    if (rmLogger) {
+      try {
+        rmLogger.info('Todoist API request', { method, url: fullUrl, path, payload: payload ? (payload.content ? { ...payload, content: payload.content } : payload) : null });
+      } catch (e) {
+        console.warn('Todoist request logging failed', e && e.message ? e.message : e);
+      }
     }
 
     const response = await fetch(fullUrl, options);
     const data = await parseResponse(response);
 
-    try {
-      const rmLogger = require('./remarkable/logger');
-      rmLogger.info('Todoist API response', { method, url: fullUrl, path, status: response.status, responseData: data });
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('Todoist response logging failed', e && e.message ? e.message : e);
+    if (rmLogger) {
+      try {
+        rmLogger.info('Todoist API response', { method, url: fullUrl, path, status: response.status, responseData: data });
+      } catch (e) {
+        console.warn('Todoist response logging failed', e && e.message ? e.message : e);
+      }
     }
 
     if (!response.ok) {
@@ -159,12 +165,12 @@ function createTodoistClient(token, baseUrl) {
         httpStatusCode: response.status,
         responseData: data,
       });
-      try {
-        const rmLogger = require('./remarkable/logger');
-        rmLogger.error('Todoist API エラー', { method, path, status: response.status, responseData: data });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('Todoist error logging failed', e && e.message ? e.message : e);
+      if (rmLogger) {
+        try {
+          rmLogger.error('Todoist API エラー', { method, path, status: response.status, responseData: data });
+        } catch (e) {
+          console.warn('Todoist error logging failed', e && e.message ? e.message : e);
+        }
       }
       throw err;
     }
@@ -175,7 +181,7 @@ function createTodoistClient(token, baseUrl) {
   return {
     getProjects: () => request('GET', 'projects'),
     addProject: (payload) => request('POST', 'projects', mapPayloadForApi(payload)),
-    getTasks: (params) => request('GET', 'tasks', undefined, mapParamsForApi(params)),
+    getTasks: (params) => request('GET', 'https://api.todoist.com/api/v1/tasks', undefined, mapParamsForApi(params)),
     addTask: (payload) => request('POST', 'tasks', mapPayloadForApi(payload)),
     updateTask: (id, payload) => request('POST', `tasks/${id}`, mapPayloadForApi(payload)),
     closeTask: (id) => request('POST', `tasks/${id}/close`),
@@ -210,10 +216,6 @@ function formatLocalDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function normalizeTasksResponse(data) {

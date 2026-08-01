@@ -68,11 +68,11 @@ function parseJson(text) {
 }
 
 /**
- * 文字列配列へ正規化する。
+ * 文字列へ正規化する。
  * 要素がオブジェクトの場合は title / content / text を拾う。
  *
- * @param {unknown} value
- * @returns {string[]}
+ * @param {unknown} item
+ * @returns {string}
  */
 function itemToString(item) {
   if (typeof item === 'string') return item.trim();
