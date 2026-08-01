@@ -60,18 +60,31 @@ function mapPayloadForApi(payload) {
   }
 
   if ('dueDate' in mapped) {
-    mapped.due_date = mapped.dueDate;
+    if (mapped.dueDate instanceof Date) {
+      mapped.due_date = mapped.dueDate.toISOString().split('T')[0];
+    } else {
+      mapped.due_date = mapped.dueDate;
+    }
     delete mapped.dueDate;
   }
 
   if ('dueDatetime' in mapped) {
-    mapped.due_datetime = mapped.dueDatetime;
+    if (mapped.dueDatetime instanceof Date) {
+      mapped.due_datetime = mapped.dueDatetime.toISOString();
+    } else {
+      mapped.due_datetime = mapped.dueDatetime;
+    }
     delete mapped.dueDatetime;
   }
 
   if ('dueTimezone' in mapped) {
     mapped.due_timezone = mapped.dueTimezone;
     delete mapped.dueTimezone;
+  }
+
+  if ('labelIds' in mapped) {
+    mapped.label_ids = mapped.labelIds;
+    delete mapped.labelIds;
   }
 
   return mapped;
@@ -173,6 +186,8 @@ function createTodoistClient(token, baseUrl) {
     updateTask: (id, payload) => request('POST', `tasks/${id}`, mapPayloadForApi(payload)),
     closeTask: (id) => request('POST', `tasks/${id}/close`),
     deleteTask: (id) => request('DELETE', `tasks/${id}`),
+    getLabels: () => request('GET', 'labels'),
+    addLabel: (payload) => request('POST', 'labels', mapPayloadForApi(payload)),
   };
 }
 
@@ -227,17 +242,14 @@ function normalizeProjectsResponse(data) {
   return [];
 }
 
-function extractTasksPage(data) {
-  if (Array.isArray(data)) {
-    return { items: data, nextCursor: null };
-  }
-  if (!data || typeof data !== 'object') {
-    return { items: [], nextCursor: null };
-  }
-
-  const items = normalizeTasksResponse(data);
-  const nextCursor = data.next_cursor || data.nextCursor || null;
-  return { items, nextCursor };
+function normalizeLabelsResponse(data) {
+  if (Array.isArray(data)) return data;
+  if (!data) return [];
+  if (Array.isArray(data.labels)) return data.labels;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.results)) return data.results;
+  return [];
 }
 
 class TodoistService {
@@ -245,6 +257,8 @@ class TodoistService {
     this.api = createTodoistClient(config.todoist.apiToken, config.todoist.apiBaseUrl);
     this.projectId = null;
     this.projectCache = new Map();
+    this.labelIdToName = new Map();
+    this.labelNameToId = new Map();
   }
 
   normalizeProjectName(projectName) {
@@ -379,17 +393,111 @@ class TodoistService {
       throw error;
     }
   }
+  async loadLabels() {
+    try {
+      const labelsResponse = await this.api.getLabels();
+      const labels = normalizeLabelsResponse(labelsResponse);
+      this.labelIdToName.clear();
+      this.labelNameToId.clear();
+
+      for (const label of labels) {
+        if (!label || !label.id || !label.name) continue;
+        this.labelIdToName.set(label.id, label.name);
+        this.labelNameToId.set(label.name, label.id);
+      }
+
+      return labels;
+    } catch (error) {
+      console.error('Todoist ラベル読み込みエラー:', error);
+      throw error;
+    }
+  }
+
+  async getLabelId(labelName) {
+    if (!labelName) return null;
+    const normalizedName = String(labelName).trim();
+    if (!normalizedName) return null;
+
+    if (this.labelNameToId.has(normalizedName)) {
+      return this.labelNameToId.get(normalizedName);
+    }
+
+    if (this.labelNameToId.size === 0) {
+      await this.loadLabels();
+      if (this.labelNameToId.has(normalizedName)) {
+        return this.labelNameToId.get(normalizedName);
+      }
+    }
+
+    const lower = normalizedName.toLowerCase();
+    const existing = Array.from(this.labelNameToId.entries()).find(([name]) => name.toLowerCase() === lower);
+    if (existing) {
+      return existing[1];
+    }
+
+    const createdLabel = await this.api.addLabel({ name: normalizedName });
+    if (createdLabel && createdLabel.id) {
+      this.labelIdToName.set(createdLabel.id, createdLabel.name);
+      this.labelNameToId.set(createdLabel.name, createdLabel.id);
+      return createdLabel.id;
+    }
+
+    throw new TodoistError(`Todoist label creation failed for '${normalizedName}'`, {
+      responseData: createdLabel,
+    });
+  }
+
+  async resolveLabelIds(payload) {
+    if (!payload || !Array.isArray(payload.labels) || payload.labels.length === 0) {
+      return payload;
+    }
+
+    const labelIds = [];
+    for (const labelName of payload.labels) {
+      const labelId = await this.getLabelId(labelName);
+      if (labelId) {
+        labelIds.push(labelId);
+      }
+    }
+
+    if (labelIds.length > 0) {
+      payload.labelIds = [...new Set(labelIds)];
+    }
+    delete payload.labels;
+    return payload;
+  }
+
+  async hydrateTaskLabels(tasks) {
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      return tasks;
+    }
+
+    if (this.labelIdToName.size === 0) {
+      await this.loadLabels();
+    }
+
+    for (const task of tasks) {
+      if (Array.isArray(task.label_ids)) {
+        task.labels = task.label_ids
+          .map((labelId) => this.labelIdToName.get(labelId))
+          .filter(Boolean);
+      }
+    }
+
+    return tasks;
+  }
+
   async createReviewTask(content, dueDate, priority = 1) {
     try {
       const projectId = await this.getOrCreateProject();
-      
-      const task = await this.api.addTask({
+      const payload = await this.resolveLabelIds({
         content,
         projectId,
-        dueDate: dueDate.toISOString().split('T')[0],
+        dueDate: dueDate instanceof Date ? dueDate.toISOString().split('T')[0] : dueDate,
         priority,
         labels: ['復習'],
       });
+      const task = await this.api.addTask(payload);
 
       return task;
     } catch (error) {
@@ -405,7 +513,7 @@ class TodoistService {
   async createClassroomTask(payload) {
     try {
       const projectId = await this.getOrCreateProjectByName(config.classroom.projectName);
-      const task = await this.api.addTask({
+      const taskPayload = await this.resolveLabelIds({
         content: payload.content,
         description: payload.description,
         projectId,
@@ -414,6 +522,7 @@ class TodoistService {
         dueTimezone: payload.dueTimezone,
         labels: ['Classroom'],
       });
+      const task = await this.api.addTask(taskPayload);
 
       return task;
     } catch (error) {
@@ -435,13 +544,14 @@ class TodoistService {
    */
   async createRemarkableTodo(payload) {
     const projectId = await this.getOrCreateProject();
-
-    return this.api.addTask({
+    const taskPayload = await this.resolveLabelIds({
       content: payload.content,
       description: payload.description,
       projectId,
       priority: 1,
     });
+
+    return this.api.addTask(taskPayload);
   }
 
   /**
@@ -451,7 +561,8 @@ class TodoistService {
    */
   async updateTask(taskId, payload) {
     try {
-      await this.api.updateTask(taskId, payload);
+      const normalizedPayload = await this.resolveLabelIds(payload);
+      await this.api.updateTask(taskId, normalizedPayload);
       return true;
     } catch (error) {
       console.error('Todoist タスク更新エラー:', error);
@@ -622,31 +733,15 @@ class TodoistService {
    * @returns {Promise<Array>} タスク配列
    */
   async getAllTasks() {
-    const pageLimit = 50;
-    let cursor;
-    let allTasks = [];
-
-    while (true) {
-      const response = await this.api.getTasks({ limit: pageLimit, cursor });
-      const { items, nextCursor } = extractTasksPage(response);
-
-      if (DEBUG_TODOIST) {
-        console.log('Todoist debug: page size', items.length, 'nextCursor', nextCursor ? 'yes' : 'no');
-      }
-
-      if (items.length > 0) {
-        allTasks = allTasks.concat(items);
-      }
-
-      if (!nextCursor) {
-        break;
-      }
-
-      cursor = nextCursor;
-      await sleep(200);
+    try {
+      const response = await this.api.getTasks();
+      const tasks = normalizeTasksResponse(response);
+      await this.hydrateTaskLabels(tasks);
+      return tasks;
+    } catch (error) {
+      console.error('Todoist タスク一覧取得エラー:', error);
+      throw error;
     }
-
-    return allTasks;
   }
 }
 
