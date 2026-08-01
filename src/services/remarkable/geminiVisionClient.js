@@ -123,6 +123,28 @@ class GeminiVisionClient {
       body: JSON.stringify(body),
     });
 
+    // 実際に送信している request body をログに出力（画像データは先頭100文字に切り詰める）
+    try {
+      const preview = JSON.parse(JSON.stringify(body));
+      if (Array.isArray(preview.contents)) {
+        for (const c of preview.contents) {
+          if (!Array.isArray(c.parts)) continue;
+          for (const p of c.parts) {
+            if (p && p.inline_data && typeof p.inline_data.data === 'string') {
+              const dataStr = p.inline_data.data;
+              p.inline_data.data = `${dataStr.slice(0, 100)}${dataStr.length > 100 ? `... (length=${dataStr.length})` : ''}`;
+            }
+          }
+        }
+      }
+
+      logger.info('Gemini に送信した request body (truncated)', {
+        requestBody: JSON.stringify(preview, null, 2).slice(0, 20000),
+      });
+    } catch (err) {
+      logger.warn('request body のプレビュー生成に失敗しました', { error: String(err) });
+    }
+
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
