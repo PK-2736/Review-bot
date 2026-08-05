@@ -105,6 +105,16 @@ function toStringArray(value) {
 }
 
 /**
+ * TODO は 1 ページにつき 1 件に制限する。
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function toSingleTodoArray(value) {
+  const items = toStringArray(value);
+  return items.length > 0 ? [items[0]] : [];
+}
+
+/**
  * 文字列へ正規化する。
  * @param {unknown} value
  * @returns {string}
@@ -139,7 +149,7 @@ function normalizeAnalysis(parsed) {
     summary: toText(coalesceField(parsed, ['summary', 'description'])),
     important_points: toStringArray(coalesceField(parsed, ['important_points', 'importantPoints', 'key_points', 'points'])),
     memorize: toStringArray(coalesceField(parsed, ['memorize', 'memorize_points', 'memorizePoints', 'memorize_items'])),
-    todo: toStringArray(coalesceField(parsed, ['todo', 'todos', 'todo_items', 'tasks'])),
+    todo: toSingleTodoArray(coalesceField(parsed, ['todo', 'todos', 'todo_items', 'tasks'])),
     tags: toStringArray(coalesceField(parsed, ['tags', 'label', 'labels'])),
   };
 }
@@ -186,6 +196,7 @@ async function analyzePage(params) {
       });
 
       const analysis = normalizeAnalysis(parsed);
+      const parsedTodoCount = Array.isArray(parsed.todo) ? parsed.todo.length : (parsed.todo ? 1 : 0);
       logger.info('Gemini 解析結果 (正規化後)', {
         notebook: params.notebookName,
         page: params.page,
@@ -194,6 +205,15 @@ async function analyzePage(params) {
         summary: analysis.summary,
         todos: analysis.todo,
       });
+
+      if (parsedTodoCount > 1) {
+        logger.warn('Gemini が複数 TODO を返したため先頭 1 件に絞りました', {
+          notebook: params.notebookName,
+          page: params.page,
+          parsedTodoCount,
+          normalizedTodoCount: analysis.todo.length,
+        });
+      }
 
       if (analysis.todo.length === 0) {
         logger.warn('Gemini 解析結果で TODO が 0 件でした', {

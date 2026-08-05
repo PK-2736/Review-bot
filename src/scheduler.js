@@ -4,6 +4,7 @@ const config = require('./config');
 const todoistService = require('./services/todoist');
 const classroomService = require('./services/classroomService');
 const { syncService: remarkableSyncService, formatSyncResult } = require('./services/remarkable');
+const remarkableTodoRegistrar = require('./services/remarkable/todoRegistrar');
 const ScheduleStore = require('./services/scheduleStore');
 const ReminderStore = require('./services/reminderStore');
 const { createTodoEmbed } = require('./commands/today');
@@ -34,7 +35,7 @@ class TodoScheduler {
       try {
         const channel = await this.client.channels.fetch(config.notification.channelId);
         if (channel && channel.isTextBased() && 'send' in channel) {
-          await channel.send({ content: formatSyncResult(summary) });
+          await channel.send({ embeds: [formatSyncResult(summary)] });
         } else {
           console.warn('通知チャンネルが取得できませんでした:', config.notification.channelId);
         }
@@ -90,6 +91,9 @@ class TodoScheduler {
 
     // reMarkable 復習同期
     this.startRemarkableSync();
+
+    // reMarkable TODO 再試行
+    this.startRemarkableTodoRetry();
 
     // 古い復習タスクの自動削除
     this.startOldReviewCleanup();
@@ -166,6 +170,41 @@ class TodoScheduler {
 
     this.jobs.push(remarkableJob);
     console.log(`🖊️ reMarkable 自動レビューを設定しました: ${config.remarkable.syncTime}`);
+  }
+
+  /**
+   * reMarkable TODO の再試行を開始
+   */
+  startRemarkableTodoRetry() {
+    if (!config.remarkable.enabled) {
+      return;
+    }
+
+    const retryJob = cron.schedule('*/10 * * * *', async () => {
+      await this.processRemarkableTodoRetries();
+    }, {
+      scheduled: true,
+      timezone: config.remarkable.timezone || 'Asia/Tokyo'
+    });
+
+    this.jobs.push(retryJob);
+    console.log('🔁 reMarkable TODO 再試行チェックを開始しました');
+
+    void this.processRemarkableTodoRetries();
+  }
+
+  /**
+   * 期限到来した reMarkable TODO 再試行を処理
+   */
+  async processRemarkableTodoRetries() {
+    try {
+      const result = await remarkableTodoRegistrar.processPendingTodoRetries();
+      if (result.processed > 0) {
+        console.log(`🔁 reMarkable TODO 再試行結果 (処理: ${result.processed}, 成功: ${result.succeeded}, 再登録: ${result.rescheduled}, 失敗: ${result.failed})`);
+      }
+    } catch (error) {
+      console.error('reMarkable TODO 再試行処理エラー:', error);
+    }
   }
 
   /**
@@ -275,7 +314,7 @@ class TodoScheduler {
    */
   async executeReminder(reminder, mode = 'normal') {
     try {
-      // Todoistにタスクを追加
+      // Todoist にタスクを追加
       await todoistService.api.addTask({
         content: reminder.content,
         dueDate: new Date(),
@@ -400,7 +439,7 @@ class TodoScheduler {
   }
 
   /**
-   * TODO通知を送信
+  * 通知を送信
    * @param {string} label - 時間帯ラベル
    */
   async sendTodoNotification(label) {

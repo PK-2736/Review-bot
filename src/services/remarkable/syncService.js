@@ -268,6 +268,7 @@ class RemarkableSyncService {
 
       const registered = await todoRegistrar.registerTodos({
         notebookName: notebook.name,
+        notebookPath: notebook.path,
         page: pageNumber,
         analysis,
       });

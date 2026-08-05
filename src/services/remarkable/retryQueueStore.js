@@ -4,7 +4,7 @@ const path = require('path');
 const config = require('../../config');
 const logger = require('./logger');
 
-const DEFAULT_RETRY_DELAY_MS = 5 * 60 * 1000; // 5分
+const DEFAULT_RETRY_DELAY_MS = 60 * 60 * 1000; // 1時間
 const MAX_RETRY_ATTEMPTS = 3;
 
 class RetryQueueStore {
@@ -69,6 +69,8 @@ class RetryQueueStore {
       notebookPath,
       notebookName,
       page,
+      content: typeof entry.content === 'string' ? entry.content : '',
+      description: typeof entry.description === 'string' ? entry.description : '',
       attempt: Number.isFinite(Number(entry.attempt)) ? Math.max(1, Number(entry.attempt)) : 1,
       firstAttemptAt: typeof entry.firstAttemptAt === 'number' ? entry.firstAttemptAt : Date.now(),
       lastAttemptAt: typeof entry.lastAttemptAt === 'number' ? entry.lastAttemptAt : Date.now(),
@@ -123,23 +125,32 @@ class RetryQueueStore {
     return false;
   }
 
-  scheduleRetry(notebookPath, notebookName, page, error, attempt) {
+  scheduleRetry(entryInput) {
+    const entryData = entryInput && typeof entryInput === 'object' ? entryInput : {};
     const now = Date.now();
+    const notebookPath = typeof entryData.notebookPath === 'string' ? entryData.notebookPath : '';
+    const notebookName = typeof entryData.notebookName === 'string' ? entryData.notebookName : notebookPath;
+    const page = Number.isFinite(Number(entryData.page)) ? Number(entryData.page) : null;
+    if (!notebookPath || page === null) return null;
+
     const existing = this.findEntry(notebookPath, page);
-    const nextAttempt = existing ? existing.attempt + 1 : attempt;
+    const incomingAttempt = Number.isFinite(Number(entryData.attempt)) ? Math.max(1, Number(entryData.attempt)) : 1;
+    const nextAttempt = existing ? Math.max(existing.attempt, incomingAttempt) : incomingAttempt;
     const firstAttemptAt = existing ? existing.firstAttemptAt : now;
     const nextAttemptAt = now + DEFAULT_RETRY_DELAY_MS;
     const entry = {
       notebookPath,
       notebookName,
       page,
+      content: typeof entryData.content === 'string' ? entryData.content : (existing ? existing.content : ''),
+      description: typeof entryData.description === 'string' ? entryData.description : (existing ? existing.description : ''),
       attempt: nextAttempt,
       firstAttemptAt,
       lastAttemptAt: now,
       nextAttemptAt,
-      lastErrorMessage: error instanceof Error ? error.message : String(error),
-      lastErrorType: error && error.name ? error.name : '',
-      lastErrorSource: error && error.source ? error.source : '',
+      lastErrorMessage: entryData.error instanceof Error ? entryData.error.message : String(entryData.error || ''),
+      lastErrorType: entryData.error && entryData.error.name ? entryData.error.name : '',
+      lastErrorSource: entryData.error && entryData.error.source ? entryData.error.source : '',
       notebookModified: existing ? existing.notebookModified : null,
       totalPages: existing ? existing.totalPages : null,
     };

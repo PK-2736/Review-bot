@@ -1,3 +1,5 @@
+const { EmbedBuilder } = require('discord.js');
+
 /** Discord へ表示するエラー・警告の最大件数 */
 const MAX_ISSUE_LINES = 5;
 
@@ -15,30 +17,42 @@ function formatIssues(items) {
 }
 
 /**
- * 同期結果を Discord へ送るテキストへ整形する。
+ * 同期結果を Discord 埋め込みへ整形する。
  *
  * コマンド実行と 23:00 の自動実行で同じ表示になるよう、整形もここに集約する。
  *
  * @param {import('./types').SyncSummary} summary
- * @returns {string}
+ * @returns {EmbedBuilder}
  */
 function formatSyncResult(summary) {
-  const sections = [
-    'レビュー完了',
-    `更新されたノート：${summary.updatedNotebooks}冊`,
-    `処理したページ：${summary.processedPages}ページ`,
-    `作成したTODO：${summary.createdTodos}件`,
-  ];
+  const embed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle('reMarkable レビュー完了')
+    .setDescription('同期結果をまとめました。')
+    .addFields(
+      { name: '更新されたノート', value: `${summary.updatedNotebooks}冊`, inline: true },
+      { name: '処理したページ', value: `${summary.processedPages}ページ`, inline: true },
+      { name: '作成したTODO', value: `${summary.createdTodos}件`, inline: true },
+    )
+    .setTimestamp();
 
   if (summary.errors.length > 0) {
-    sections.push(`エラー：${summary.errors.length}件\n${formatIssues(summary.errors)}`);
+    embed.addFields({
+      name: `エラー ${summary.errors.length}件`,
+      value: formatIssues(summary.errors),
+      inline: false,
+    });
   }
   if (summary.warnings.length > 0) {
-    sections.push(`警告：${summary.warnings.length}件\n${formatIssues(summary.warnings)}`);
+    embed.addFields({
+      name: `警告 ${summary.warnings.length}件`,
+      value: formatIssues(summary.warnings),
+      inline: false,
+    });
   }
 
-  // 仕様の実行結果例にあわせて各項目を空行で区切る
-  return sections.join('\n\n');
+  embed.setFooter({ text: 'reMarkable / Todoist' });
+  return embed;
 }
 
 module.exports = { formatSyncResult };

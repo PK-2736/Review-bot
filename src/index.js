@@ -58,7 +58,7 @@ client.once('clientReady', async () => {
     }
   }
 
-  // TODOスケジューラーを開始
+  // reMarkable レビュースケジューラーを開始
   const scheduler = new TodoScheduler(client);
   scheduler.start();
 });

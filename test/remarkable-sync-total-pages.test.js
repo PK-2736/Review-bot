@@ -76,19 +76,33 @@ test('syncNotebook does not update cache when any page fails', async () => {
     return { baseline: 0, modified: '2026-08-01T00:00:00Z', totalPages: 5 };
   };
 
-  pageFetcher.fetchPage = async () => ({ page: 1, totalPages: 2, mimeType: 'image/png', data: 'img-data', meta: {} });
-  pageAnalyzer.analyzePage = async () => ({
-    analysis: {
-      title: 'Demo',
-      summary: 'Summary',
-      important_points: [],
-      memorize: [],
-      todo: ['Review chapter'],
-      tags: [],
-    },
-    durationMs: 1,
+  pageFetcher.fetchPage = async (notebookPath, page) => ({
+    page,
+    totalPages: 2,
+    mimeType: 'image/png',
+    data: 'img-data',
+    meta: { notebookPath },
   });
-  todoRegistrar.registerTodos = async () => ({ created: 0, warnings: ['Todoist failed'] });
+  let analyzeCalls = 0;
+  pageAnalyzer.analyzePage = async () => {
+    analyzeCalls += 1;
+    if (analyzeCalls === 2) {
+      throw new Error('Gemini failed');
+    }
+
+    return {
+      analysis: {
+        title: 'Demo',
+        summary: 'Summary',
+        important_points: [],
+        memorize: [],
+        todo: ['Review chapter'],
+        tags: [],
+      },
+      durationMs: 1,
+    };
+  };
+  todoRegistrar.registerTodos = async () => ({ created: 3, warnings: [] });
 
   try {
     const summary = {

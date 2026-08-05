@@ -48,12 +48,14 @@
 /**
  * Gemini Vision がページ画像から生成した解析結果。
  *
+ * TODO は 1 ページにつき 1 件を想定する。
+ *
  * @typedef {Object} PageAnalysis
  * @property {string} title - 分かりやすいタイトル
  * @property {string} summary - 要約
  * @property {string[]} important_points - 重要ポイント
  * @property {string[]} memorize - 覚えるべき内容
- * @property {string[]} todo - 復習用 TODO
+ * @property {string[]} todo - 復習用 TODO（最大 1 件）
  * @property {string[]} tags - タグ
  */
 

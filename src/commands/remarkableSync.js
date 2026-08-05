@@ -40,7 +40,7 @@ module.exports = {
 
     try {
       const summary = await syncService.sync();
-      await interaction.editReply({ content: formatSyncResult(summary) });
+      await interaction.editReply({ embeds: [formatSyncResult(summary)] });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('reMarkable レビュー実行エラー:', error);

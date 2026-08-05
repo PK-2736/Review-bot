@@ -225,6 +225,15 @@ function buildReviewTaskDescription(baseDescription, dueDateStr) {
   return lines.join('\n');
 }
 
+function hasExistingReviewTask(tasks, projectId, content, dueDateStr) {
+  return tasks.some((task) => {
+    if (!task || task.project_id !== projectId) return false;
+    if (String(task.content || '').trim() !== content) return false;
+    const dueDate = getTaskDueDate(task);
+    return dueDate ? formatLocalDate(dueDate) === dueDateStr : false;
+  });
+}
+
 function normalizeTasksResponse(data) {
   if (Array.isArray(data)) return data;
   if (!data) return [];
@@ -555,7 +564,7 @@ class TodoistService {
    * @returns {Promise<{tasks:Array,failedDetails:Array}>} 作成結果
    */
   async createRemarkableTodo(payload, projectName) {
-    // TODO は常に固定の review プロジェクトに登録する。
+    // reMarkable 由来のタスクは常に固定の review プロジェクトに登録する。
     // notebook 名ごとのプロジェクト作成はプロジェクト数上限に影響するため避ける。
     const projectId = await this.getOrCreateProjectByName(config.review.defaultProjectName);
     const baseContent = String(payload.content || '').trim();
@@ -563,13 +572,21 @@ class TodoistService {
     const reviewOffsets = [1, 7, 30];
     const createdTasks = [];
     const failedDetails = [];
+    const existingTasks = await this.getAllTasks();
 
     for (const offset of reviewOffsets) {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + offset);
       const dueDateStr = formatLocalDate(dueDate);
+      const taskContent = `${baseContent} (${dueDateStr})`;
+
+      if (hasExistingReviewTask(existingTasks, projectId, taskContent, dueDateStr)) {
+        createdTasks.push({ content: taskContent, dueDate: dueDateStr, projectId, existing: true });
+        continue;
+      }
+
       const taskPayload = await this.resolveLabelIds({
-        content: `${baseContent} (${dueDateStr})`,
+        content: taskContent,
         description: buildReviewTaskDescription(baseDescription, dueDateStr),
         projectId,
         priority: 1,
