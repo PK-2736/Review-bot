@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const mcpClient = require('../services/remarkable/mcpClient');
 const { normalizeBrowse } = require('../services/remarkable/browseNormalizer');
-const ignoreStore = require('../services/remarkable/ignoreStore');
+const allowStore = require('../services/remarkable/allowStore');
 
 /** Helper to fetch notebooks for autocomplete (limited to 25) */
 async function fetchNotebooks() {
@@ -16,11 +16,11 @@ async function fetchNotebooks() {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('remarkable_ignore')
-    .setDescription('reMarkable のノートを無視リストへ追加/削除します')
-    .addSubcommand((sub) => sub.setName('add').setDescription('ノートを無視リストに追加').addStringOption(opt => opt.setName('notebook').setDescription('無視するノートのパス').setRequired(true).setAutocomplete(true)))
-    .addSubcommand((sub) => sub.setName('remove').setDescription('ノートを無視リストから削除').addStringOption(opt => opt.setName('notebook').setDescription('削除するノートのパス').setRequired(true).setAutocomplete(true)))
-    .addSubcommand((sub) => sub.setName('list').setDescription('現在の無視リストを表示')),
+    .setName('remarkable_enable')
+    .setDescription('reMarkable のノートについて TODO 作成を有効化/無効化します（排他的）')
+    .addSubcommand((sub) => sub.setName('add').setDescription('ノートを TODO 作成有効リストに追加').addStringOption(opt => opt.setName('notebook').setDescription('有効化するノートのパスまたはID').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((sub) => sub.setName('remove').setDescription('ノートを TODO 作成有効リストから削除').addStringOption(opt => opt.setName('notebook').setDescription('削除するノートのパスまたはID').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((sub) => sub.setName('list').setDescription('現在の有効化リストを表示')),
 
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
@@ -36,25 +36,25 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'list') {
-      const list = ignoreStore.listAll();
+      const list = allowStore.listAll();
       if (list.length === 0) {
-        await interaction.reply({ content: '無視リストは空です', ephemeral: true });
+        await interaction.reply({ content: '有効化リストは空です（空なら全ノートが対象）', ephemeral: true });
       } else {
-        await interaction.reply({ content: `無視リスト: \n${list.join('\n')}`, ephemeral: true });
+        await interaction.reply({ content: `有効化リスト: \n${list.join('\n')}`, ephemeral: true });
       }
       return;
     }
 
     const notebook = interaction.options.getString('notebook', true);
     if (sub === 'add') {
-      ignoreStore.add(notebook);
-      await interaction.reply({ content: `ノートを無視リストに追加しました: ${notebook}`, ephemeral: true });
+      allowStore.add(notebook);
+      await interaction.reply({ content: `ノートを TODO 作成有効リストに追加しました: ${notebook}`, ephemeral: true });
       return;
     }
 
     if (sub === 'remove') {
-      ignoreStore.remove(notebook);
-      await interaction.reply({ content: `ノートを無視リストから削除しました: ${notebook}`, ephemeral: true });
+      allowStore.remove(notebook);
+      await interaction.reply({ content: `ノートを TODO 作成有効リストから削除しました: ${notebook}`, ephemeral: true });
       return;
     }
   },

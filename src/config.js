@@ -86,7 +86,7 @@ module.exports = {
     },
     retryQueueFile: process.env.REMARKABLE_RETRY_QUEUE_FILE
       || path.join(__dirname, '..', 'data', 'remarkable-retry-queue.json'),
-    // 無視リスト保存先
-    ignoreFile: process.env.REMARKABLE_IGNORE_FILE || path.join(__dirname, '..', 'data', 'remarkable-ignore.json'),
+    // TODO 作成を有効化するリストの保存先
+    enableFile: process.env.REMARKABLE_ENABLE_FILE || path.join(__dirname, '..', 'data', 'remarkable-enable.json'),
   },
 };

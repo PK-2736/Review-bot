@@ -657,19 +657,22 @@ class TodoistService {
     try {
       const tasks = await this.getAllTasks();
       const now = new Date();
-      const today = formatLocalDate(now);
-      
-      // 今日が期限のタスクのみ
+      const startOfToday = new Date(now);
+      startOfToday.setHours(0, 0, 0, 0);
+      const endOfToday = new Date(now);
+      endOfToday.setHours(23, 59, 59, 999);
+
+      // 今日が期限のタスクのみ（期限日時が今日の範囲内であるかを判定）
       const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      
-      // 今日が期限のタスク かつ 期限日が1ヶ月以内 かつ 未完了のタスクのみ
+
       const todayTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.isCompleted) return false; // 完了済みタスクを除外
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
-        if (formatLocalDate(dueDate) !== today) return false;
+        // dueDate が今日の範囲内かどうか
+        if (dueDate < startOfToday || dueDate > endOfToday) return false;
         return dueDate >= oneMonthAgo;
       });
 
@@ -696,18 +699,19 @@ class TodoistService {
     try {
       const tasks = await this.getAllTasks();
       const now = new Date();
-      const today = formatLocalDate(now);
-      
+      const startOfToday = new Date(now);
+      startOfToday.setHours(0, 0, 0, 0);
+
       const oneMonthAgo = new Date(now);
       oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      
-      // 昨日以前が期限のタスク かつ 期限日が1ヶ月以内 かつ 未完了のタスクのみ
+
+      // 昨日以前が期限のタスク（期限日時が startOfToday より前）
       const overdueTasks = tasks.filter(task => {
         if (!task.due) return false;
         if (task.isCompleted) return false; // 完了済みタスクを除外
         const dueDate = getTaskDueDate(task);
         if (!dueDate) return false;
-        if (formatLocalDate(dueDate) >= today) return false;
+        if (dueDate >= startOfToday) return false;
         return dueDate >= oneMonthAgo;
       });
 

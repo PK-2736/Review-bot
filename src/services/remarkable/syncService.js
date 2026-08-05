@@ -7,7 +7,7 @@ const logger = require('./logger');
 const mcpClient = require('./mcpClient');
 const pageAnalyzer = require('./pageAnalyzer');
 const todoRegistrar = require('./todoRegistrar');
-const ignoreStore = require('./ignoreStore');
+const allowStore = require('./allowStore');
 
 /**
  * reMarkable レビューの同期サービス。
@@ -191,16 +191,20 @@ class RemarkableSyncService {
       logger.warn('PDF 判定に失敗しました', { notebook: notebook.path, error: String(e) });
     }
 
-    // 無視リストに含まれているノートは更新があっても TODO 作成を行わずスキップ
-    if (ignoreStore.has(notebook.path)) {
-      logger.info('無視リストに登録されているため TODO 作成をスキップします', { notebook: notebook.name, notebookPath: notebook.path });
-      // ただしキャッシュは更新して処理済みとして扱う
-      const totalPages = notebook.totalPages != null ? notebook.totalPages : (cacheStore.getEntry(notebook.path) ? cacheStore.getEntry(notebook.path).totalPages : 0);
-      cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
-      summary.updatedNotebooks += 1;
-      summary.notebookNames.push(notebook.name);
-      return;
-    }
+      // 有効化リストが空でない場合、リストに含まれているノートのみ TODO を作成する（排他動作）
+      const enableList = allowStore.listAll();
+      if (Array.isArray(enableList) && enableList.length > 0) {
+        const keyCandidates = [notebook.path, notebook.name, notebook.id].filter(Boolean).map(String);
+        const enabled = keyCandidates.some((k) => allowStore.has(k));
+        if (!enabled) {
+          logger.info('有効化リストに含まれていないため TODO 作成をスキップします', { notebook: notebook.name, notebookPath: notebook.path });
+          const totalPages = notebook.totalPages != null ? notebook.totalPages : (cacheStore.getEntry(notebook.path) ? cacheStore.getEntry(notebook.path).totalPages : 0);
+          cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
+          summary.updatedNotebooks += 1;
+          summary.notebookNames.push(notebook.name);
+          return;
+        }
+      }
     const entry = cacheStore.getEntry(notebook.path);
     logger.info('cache entry', {
       notebook: notebook.name,
