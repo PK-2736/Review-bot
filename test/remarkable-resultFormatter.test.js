@@ -19,7 +19,7 @@ test('formatSyncResult returns a Discord embed', () => {
   const json = embed.toJSON();
 
   assert.equal(json.title, 'reMarkable レビュー完了');
-  assert.equal(json.fields.length, 5);
+  assert.equal(json.fields.length, 4);
   assert.equal(json.fields[0].name, '更新されたノート');
   assert.equal(json.fields[2].value, '3件');
 });

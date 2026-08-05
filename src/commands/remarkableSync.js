@@ -40,7 +40,18 @@ module.exports = {
 
     try {
       const summary = await syncService.sync();
-      await interaction.editReply({ embeds: [formatSyncResult(summary)] });
+      const embed = formatSyncResult(summary);
+      if (summary.errors && summary.errors.length > 0) {
+        // エラーはファイルにして送信
+        const filePath = require('../services/remarkable').createErrorTextFile(summary.errors);
+        try {
+          await interaction.editReply({ embeds: [embed], files: [{ attachment: filePath, name: 'remarkable-errors.txt' }] });
+        } finally {
+          try { require('fs').unlinkSync(filePath); } catch (e) { /* ignore */ }
+        }
+      } else {
+        await interaction.editReply({ embeds: [embed] });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('reMarkable レビュー実行エラー:', error);

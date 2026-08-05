@@ -7,5 +7,6 @@
 module.exports = {
   syncService: require('./syncService'),
   formatSyncResult: require('./resultFormatter').formatSyncResult,
+  createErrorTextFile: require('./resultFormatter').createErrorTextFile,
   cacheStore: require('./cacheStore').cacheStore,
 };

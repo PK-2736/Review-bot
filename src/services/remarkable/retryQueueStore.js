@@ -4,7 +4,7 @@ const path = require('path');
 const config = require('../../config');
 const logger = require('./logger');
 
-const DEFAULT_RETRY_DELAY_MS = 60 * 60 * 1000; // 1時間
+const DEFAULT_RETRY_DELAY_MS = 30 * 60 * 1000; // 30分
 const MAX_RETRY_ATTEMPTS = 3;
 
 class RetryQueueStore {
@@ -137,7 +137,24 @@ class RetryQueueStore {
     const incomingAttempt = Number.isFinite(Number(entryData.attempt)) ? Math.max(1, Number(entryData.attempt)) : 1;
     const nextAttempt = existing ? Math.max(existing.attempt, incomingAttempt) : incomingAttempt;
     const firstAttemptAt = existing ? existing.firstAttemptAt : now;
-    const nextAttemptAt = now + DEFAULT_RETRY_DELAY_MS;
+    // Determine nextAttemptAt. Normally schedule after DEFAULT_RETRY_DELAY_MS.
+    // However, if the remaining attempts (including this one) spaced by the
+    // default delay would cross midnight, compress the per-attempt delay so
+    // that all remaining attempts finish before the day rolls over.
+    const attemptsLeft = Math.max(1, MAX_RETRY_ATTEMPTS - (incomingAttempt - 1));
+
+    // Time until next midnight (start of next day)
+    const nowDate = new Date(now);
+    const tomorrow = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1);
+    const msUntilMidnight = tomorrow.getTime() - now;
+
+    let perAttemptDelay = DEFAULT_RETRY_DELAY_MS;
+    if (msUntilMidnight < perAttemptDelay * attemptsLeft) {
+      // Compress delay so remaining attempts fit before midnight, but not below 1 minute
+      perAttemptDelay = Math.max(60 * 1000, Math.floor(msUntilMidnight / attemptsLeft));
+    }
+
+    const nextAttemptAt = now + perAttemptDelay;
     const entry = {
       notebookPath,
       notebookName,

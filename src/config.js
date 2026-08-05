@@ -62,7 +62,11 @@ module.exports = {
   remarkable: {
     // reMarkable ノートの自動レビュー（仕様: remarkable-review2.md）
     enabled: process.env.REMARKABLE_ENABLED === 'true',
-    // 自動レビューは毎日23:00（仕様で固定。cron形式で上書き可能）
+    // 自動レビューは複数回実行（cron形式で上書き可能）。デフォルト: 18:00,20:00,22:00
+    syncTimes: process.env.REMARKABLE_SYNC_TIMES
+      ? process.env.REMARKABLE_SYNC_TIMES.split(',').map(s => s.trim()).filter(Boolean)
+      : ['0 18 * * *', '0 20 * * *', '0 22 * * *'],
+    // 単一 cron 互換のための後方互換キー
     syncTime: process.env.REMARKABLE_SYNC_TIME || '0 23 * * *',
     timezone: process.env.REMARKABLE_TIMEZONE || 'Asia/Tokyo',
     // remarkable_browse を実行するルートパス（仕様: remarkable_browse("/")）
@@ -82,5 +86,7 @@ module.exports = {
     },
     retryQueueFile: process.env.REMARKABLE_RETRY_QUEUE_FILE
       || path.join(__dirname, '..', 'data', 'remarkable-retry-queue.json'),
+    // 無視リスト保存先
+    ignoreFile: process.env.REMARKABLE_IGNORE_FILE || path.join(__dirname, '..', 'data', 'remarkable-ignore.json'),
   },
 };

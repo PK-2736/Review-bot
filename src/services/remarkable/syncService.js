@@ -7,6 +7,7 @@ const logger = require('./logger');
 const mcpClient = require('./mcpClient');
 const pageAnalyzer = require('./pageAnalyzer');
 const todoRegistrar = require('./todoRegistrar');
+const ignoreStore = require('./ignoreStore');
 
 /**
  * reMarkable レビューの同期サービス。
@@ -76,13 +77,13 @@ class RemarkableSyncService {
    *
    * @returns {Promise<import('./types').SyncSummary>}
    */
-  async sync() {
+  async sync(options = {}) {
     if (this.inFlight) {
       logger.warn('同期処理が既に実行中のため、実行中の結果を待機します');
       return this.inFlight;
     }
 
-    this.inFlight = this.runSync().finally(() => {
+    this.inFlight = this.runSync(options).finally(() => {
       this.inFlight = null;
     });
 
@@ -93,10 +94,14 @@ class RemarkableSyncService {
    * 同期本体。
    * @returns {Promise<import('./types').SyncSummary>}
    */
-  async runSync() {
+  async runSync(options = {}) {
     if (!this.isConfigured()) {
       throw new Error(`必要な設定が不足しています: ${this.missingConfig().join(', ')}`);
     }
+
+    const cutoffTime = options.cutoffTime && Number.isFinite(Number(options.cutoffTime))
+      ? Number(options.cutoffTime)
+      : null;
 
     const summary = this.createSummary();
     const startedAt = Date.now();
@@ -118,7 +123,15 @@ class RemarkableSyncService {
       logger.warn('raw browse logging failed', { error: err instanceof Error ? err.message : String(err) });
     }
 
-    const notebooks = normalizeBrowse(rawBrowse);
+    let notebooks = normalizeBrowse(rawBrowse);
+    // cutoffTime が指定されている場合、指定時刻より後に更新されたノートは今回の実行では処理しない
+    if (cutoffTime) {
+      notebooks = notebooks.filter((nb) => {
+        if (!nb.modified) return true;
+        const nbMs = Number(new Date(nb.modified).getTime());
+        return nbMs <= cutoffTime;
+      });
+    }
     logger.info('ノート一覧を取得しました', { notebooks: notebooks.length });
 
     // ③ ノートごとに同期。1冊の失敗で全体を中断しない
@@ -160,6 +173,34 @@ class RemarkableSyncService {
    * @returns {Promise<void>}
    */
   async syncNotebook(notebook, summary) {
+    // PDF 判定: remarkable_browse が返す `type` フィールドが 'pdf' の場合は無条件で TODO を作成しない
+    try {
+      const isPdfType = notebook.type && String(notebook.type).toLowerCase() === 'pdf';
+      const lower = String(notebook.path || notebook.name || '').toLowerCase();
+      const isPdfExt = lower.endsWith('.pdf');
+      if (isPdfType || isPdfExt) {
+        logger.info('PDF ノートのため TODO 作成をスキップします', { notebook: notebook.name, notebookPath: notebook.path, type: notebook.type });
+        // 更新はキャッシュに反映する（ページ処理は行わない）
+        const totalPages = notebook.totalPages != null ? notebook.totalPages : 0;
+        cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
+        summary.updatedNotebooks += 1;
+        summary.notebookNames.push(notebook.name);
+        return;
+      }
+    } catch (e) {
+      logger.warn('PDF 判定に失敗しました', { notebook: notebook.path, error: String(e) });
+    }
+
+    // 無視リストに含まれているノートは更新があっても TODO 作成を行わずスキップ
+    if (ignoreStore.has(notebook.path)) {
+      logger.info('無視リストに登録されているため TODO 作成をスキップします', { notebook: notebook.name, notebookPath: notebook.path });
+      // ただしキャッシュは更新して処理済みとして扱う
+      const totalPages = notebook.totalPages != null ? notebook.totalPages : (cacheStore.getEntry(notebook.path) ? cacheStore.getEntry(notebook.path).totalPages : 0);
+      cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
+      summary.updatedNotebooks += 1;
+      summary.notebookNames.push(notebook.name);
+      return;
+    }
     const entry = cacheStore.getEntry(notebook.path);
     logger.info('cache entry', {
       notebook: notebook.name,

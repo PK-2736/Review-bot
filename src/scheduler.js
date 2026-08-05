@@ -35,7 +35,17 @@ class TodoScheduler {
       try {
         const channel = await this.client.channels.fetch(config.notification.channelId);
         if (channel && channel.isTextBased() && 'send' in channel) {
-          await channel.send({ embeds: [formatSyncResult(summary)] });
+          const embed = formatSyncResult(summary);
+          if (summary.errors && summary.errors.length > 0) {
+            const filePath = require('./services/remarkable').createErrorTextFile(summary.errors);
+            try {
+              await channel.send({ embeds: [embed], files: [{ attachment: filePath, name: 'remarkable-errors.txt' }] });
+            } finally {
+              try { require('fs').unlinkSync(filePath); } catch (e) { /* ignore */ }
+            }
+          } else {
+            await channel.send({ embeds: [embed] });
+          }
         } else {
           console.warn('通知チャンネルが取得できませんでした:', config.notification.channelId);
         }
@@ -161,15 +171,32 @@ class TodoScheduler {
       return;
     }
 
-    const remarkableJob = cron.schedule(config.remarkable.syncTime, async () => {
-      await this.syncRemarkableReviews();
-    }, {
-      scheduled: true,
-      timezone: config.remarkable.timezone || 'Asia/Tokyo'
-    });
+    // 複数時間帯での実行をサポート。config に `syncTimes` があればそれを使い、なければ従来の `syncTime` を1回設定する
+    const times = Array.isArray(config.remarkable.syncTimes) && config.remarkable.syncTimes.length > 0
+      ? config.remarkable.syncTimes
+      : [config.remarkable.syncTime];
 
-    this.jobs.push(remarkableJob);
-    console.log(`🖊️ reMarkable 自動レビューを設定しました: ${config.remarkable.syncTime}`);
+    for (const cronExpr of times) {
+      const remarkableJob = cron.schedule(cronExpr, async () => {
+        // このジョブがトリガーされた時点の時刻を cutoff として sync を実行する
+        const cutoff = Date.now();
+        try {
+          if (remarkableSyncService.isConfigured()) {
+            await remarkableSyncService.sync({ cutoffTime: cutoff });
+          } else {
+            console.warn(`⚠️ reMarkableレビューをスキップ（設定不足: ${remarkableSyncService.missingConfig().join(', ')})`);
+          }
+        } catch (err) {
+          console.error('scheduled remarkable sync failed', err);
+        }
+      }, {
+        scheduled: true,
+        timezone: config.remarkable.timezone || 'Asia/Tokyo'
+      });
+
+      this.jobs.push(remarkableJob);
+      console.log(`🖊️ reMarkable 自動レビューを設定しました: ${cronExpr}`);
+    }
   }
 
   /**

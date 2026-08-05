@@ -1,4 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 /** Discord へ表示するエラー・警告の最大件数 */
 const MAX_ISSUE_LINES = 5;
@@ -37,11 +40,7 @@ function formatSyncResult(summary) {
     .setTimestamp();
 
   if (summary.errors.length > 0) {
-    embed.addFields({
-      name: `エラー ${summary.errors.length}件`,
-      value: formatIssues(summary.errors),
-      inline: false,
-    });
+    // エラーの詳細は埋め込みに含めず、テキストファイルとして送信する
   }
   if (summary.warnings.length > 0) {
     embed.addFields({
@@ -55,4 +54,19 @@ function formatSyncResult(summary) {
   return embed;
 }
 
-module.exports = { formatSyncResult };
+/**
+ * エラー配列を受け取り、一時ファイルに保存してパスを返す。
+ * 呼び出し側は送信後にファイルを削除すること。
+ * @param {string[]} errors
+ * @returns {string} filePath
+ */
+function createErrorTextFile(errors) {
+  const tmpDir = os.tmpdir();
+  const fileName = `remarkable-errors-${Date.now()}.txt`;
+  const filePath = path.join(tmpDir, fileName);
+  const content = errors.join('\n\n');
+  fs.writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+module.exports = { formatSyncResult, createErrorTextFile };

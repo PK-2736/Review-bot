@@ -6,6 +6,8 @@ const LIST_KEYS = ['items', 'entries', 'documents', 'notebooks', 'children', 'fi
 const PATH_KEYS = ['path', 'full_path', 'fullPath'];
 /** 表示名が入り得るキーの候補 */
 const NAME_KEYS = ['name', 'title', 'visible_name', 'visibleName'];
+/** ドキュメント種別が入り得るキーの候補 */
+const TYPE_KEYS = ['type', 'doc_type', 'format', 'mime_type'];
 /** 最終更新日時が入り得るキーの候補 */
 const MODIFIED_KEYS = ['modified', 'last_modified', 'lastModified', 'updated', 'updated_at'];
 /** 総ページ数が入り得るキーの候補 */
@@ -159,6 +161,7 @@ function normalizeBrowse(content) {
       name: name != null ? String(name) : String(notebookPath),
       modified: modified != null ? String(modified) : null,
       totalPages: toPageCount(pick(raw, TOTAL_PAGES_KEYS)),
+      type: pick(raw, TYPE_KEYS) != null ? String(pick(raw, TYPE_KEYS)).toLowerCase() : null,
     });
   }
 
