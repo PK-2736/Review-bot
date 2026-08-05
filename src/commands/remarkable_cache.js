@@ -29,8 +29,15 @@ module.exports = {
       const findNotebookByKey = (key) => {
         if (!key) return null;
         const s = String(key);
-        // match path exactly
-        let found = notebooks.find(nb => String(nb.path) === s);
+        // match path exactly (normalize both sides to cache key format)
+        const sNorm = cacheStore.normalizePath(s);
+        let found = notebooks.find(nb => {
+          try {
+            return cacheStore.normalizePath(nb.path) === sNorm;
+          } catch (e) {
+            return String(nb.path) === s;
+          }
+        });
         if (found) return found;
         // match by name
         found = notebooks.find(nb => String(nb.name) === s);
@@ -40,7 +47,6 @@ module.exports = {
         if (found) return found;
         return null;
       };
-      const filtered = enabledOnly ? entries.filter(([ ]) => false) : entries;
       let finalEntries = entries;
       if (enabledOnly) {
         finalEntries = entries.filter(e => enabledList.includes(String(e.path)));
