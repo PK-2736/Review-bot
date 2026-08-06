@@ -36,15 +36,11 @@ class TodoScheduler {
         const channel = await this.client.channels.fetch(config.notification.channelId);
         if (channel && channel.isTextBased() && 'send' in channel) {
           const embed = formatSyncResult(summary);
-          if (summary.errors && summary.errors.length > 0) {
-            const filePath = require('./services/remarkable').createErrorTextFile(summary.errors);
-            try {
-              await channel.send({ embeds: [embed], files: [{ attachment: filePath, name: 'remarkable-errors.txt' }] });
-            } finally {
-              try { require('fs').unlinkSync(filePath); } catch (e) { /* ignore */ }
-            }
-          } else {
-            await channel.send({ embeds: [embed] });
+          const filePath = require('./services/remarkable').createSyncLogTextFile(summary);
+          try {
+            await channel.send({ embeds: [embed], files: [{ attachment: filePath, name: 'remarkable-sync-log.txt' }] });
+          } finally {
+            try { require('fs').unlinkSync(filePath); } catch (e) { /* ignore */ }
           }
         } else {
           console.warn('通知チャンネルが取得できませんでした:', config.notification.channelId);

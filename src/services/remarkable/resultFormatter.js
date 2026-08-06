@@ -40,7 +40,11 @@ function formatSyncResult(summary) {
     .setTimestamp();
 
   if (summary.errors.length > 0) {
-    // エラーの詳細は埋め込みに含めず、テキストファイルとして送信する
+    embed.addFields({
+      name: `エラー ${summary.errors.length}件`,
+      value: formatIssues(summary.errors),
+      inline: false,
+    });
   }
   if (summary.warnings.length > 0) {
     embed.addFields({
@@ -55,18 +59,48 @@ function formatSyncResult(summary) {
 }
 
 /**
- * エラー配列を受け取り、一時ファイルに保存してパスを返す。
+ * 同期サマリをテキストログとして一時ファイルに保存してパスを返す。
  * 呼び出し側は送信後にファイルを削除すること。
- * @param {string[]} errors
+ * @param {import('./types').SyncSummary|null} summary
+ * @param {string|null} [errorMessage]
  * @returns {string} filePath
  */
-function createErrorTextFile(errors) {
+function createSyncLogTextFile(summary, errorMessage = null) {
   const tmpDir = os.tmpdir();
-  const fileName = `remarkable-errors-${Date.now()}.txt`;
+  const fileName = `remarkable-sync-log-${Date.now()}.txt`;
   const filePath = path.join(tmpDir, fileName);
-  const content = errors.join('\n\n');
-  fs.writeFileSync(filePath, content, 'utf-8');
+
+  const lines = [];
+  lines.push('reMarkable Sync Log');
+  lines.push('');
+  if (errorMessage) {
+    lines.push('Error:');
+    lines.push(errorMessage);
+    lines.push('');
+  }
+  if (summary) {
+    lines.push(`updatedNotebooks: ${summary.updatedNotebooks}`);
+    lines.push(`processedPages: ${summary.processedPages}`);
+    lines.push(`createdTodos: ${summary.createdTodos}`);
+    lines.push(`durationMs: ${summary.durationMs}`);
+    lines.push(`errors: ${summary.errors.length}`);
+    lines.push(`warnings: ${summary.warnings.length}`);
+    if (summary.notebookNames.length > 0) {
+      lines.push('notebookNames:');
+      summary.notebookNames.forEach((name) => lines.push(`- ${name}`));
+    }
+    if (summary.errors.length > 0) {
+      lines.push('errors:');
+      summary.errors.forEach((item) => lines.push(`- ${item}`));
+    }
+    if (summary.warnings.length > 0) {
+      lines.push('warnings:');
+      summary.warnings.forEach((item) => lines.push(`- ${item}`));
+    }
+  }
+
+  fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
   return filePath;
 }
 
-module.exports = { formatSyncResult, createErrorTextFile };
+module.exports = { formatSyncResult, createSyncLogTextFile, createErrorTextFile: createSyncLogTextFile };
