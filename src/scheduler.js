@@ -173,6 +173,11 @@ class TodoScheduler {
       : [config.remarkable.syncTime];
 
     for (const cronExpr of times) {
+      if (!cron.validate(cronExpr)) {
+        console.warn(`⚠️ 無効な reMarkable 同期 cron をスキップします: ${cronExpr}`);
+        continue;
+      }
+
       const remarkableJob = cron.schedule(cronExpr, async () => {
         // このジョブがトリガーされた時点の時刻を cutoff として sync を実行する
         const cutoff = Date.now();

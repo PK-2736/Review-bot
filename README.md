@@ -261,7 +261,8 @@ reMarkable に書いた勉強ノートを OCR（Google Vision）＋ AI（Gemini�
 
 **同期設定（`.env`）：**
 - `REMARKABLE_ENABLED=true` で有効化
-- `REMARKABLE_SYNC_TIME` で自動実行時刻を指定（デフォルト 毎日22:00）
+- `REMARKABLE_SYNC_TIMES` で自動実行時刻を複数指定（デフォルト `0 18 * * *`,`0 20 * * *`,`0 22 * * *`）
+- `REMARKABLE_SYNC_TIME` は単一時刻の後方互換設定
 - `REMARKABLE_MCP_URL`（remarkable-mcp）
 - `REMARKABLE_MCP_TOKEN` は、MCP サーバーがトークン認証を要求する場合のみ設定します
 - `GEMINI_API_KEY` / `GEMINI_MODEL`（AI解析）
