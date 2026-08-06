@@ -2,6 +2,45 @@ const path = require('path');
 
 require('dotenv').config();
 
+function parseRemarkableSyncTimes(value) {
+  if (!value || typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const list = parsed.map((item) => String(item).trim()).filter(Boolean);
+        if (list.length > 0) return list;
+      }
+    } catch (error) {
+      // fall back to non-JSON parsing
+    }
+  }
+
+  const normalized = trimmed.replace(/[\n;]+/g, ',');
+  const parts = normalized.split(',').map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  /** @type {string[]} */
+  const merged = [];
+  let current = '';
+
+  for (const part of parts) {
+    current = current ? `${current},${part}` : part;
+    if (current.split(/\s+/).filter(Boolean).length >= 5) {
+      merged.push(current);
+      current = '';
+    }
+  }
+
+  if (current) merged.push(current);
+
+  return merged.length > 0 ? merged : null;
+}
+
 module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
@@ -63,9 +102,7 @@ module.exports = {
     // reMarkable ノートの自動レビュー（仕様: remarkable-review2.md）
     enabled: process.env.REMARKABLE_ENABLED === 'true',
     // 自動レビューは複数回実行（cron形式で上書き可能）。デフォルト: 18:00,20:00,22:00
-    syncTimes: process.env.REMARKABLE_SYNC_TIMES
-      ? process.env.REMARKABLE_SYNC_TIMES.split(',').map(s => s.trim()).filter(Boolean)
-      : ['0 18 * * *', '0 20 * * *', '0 22 * * *'],
+    syncTimes: parseRemarkableSyncTimes(process.env.REMARKABLE_SYNC_TIMES) || ['0 18 * * *', '0 20 * * *', '0 22 * * *'],
     // 単一 cron 互換のための後方互換キー
     syncTime: process.env.REMARKABLE_SYNC_TIME || '0 23 * * *',
     timezone: process.env.REMARKABLE_TIMEZONE || 'Asia/Tokyo',

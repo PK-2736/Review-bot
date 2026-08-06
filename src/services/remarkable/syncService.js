@@ -191,20 +191,6 @@ class RemarkableSyncService {
       logger.warn('PDF 判定に失敗しました', { notebook: notebook.path, error: String(e) });
     }
 
-      // 有効化リストが空でない場合、リストに含まれているノートのみ TODO を作成する（排他動作）
-      const enableList = allowStore.listAll();
-      if (Array.isArray(enableList) && enableList.length > 0) {
-        const keyCandidates = [notebook.path, notebook.name, notebook.id].filter(Boolean).map(String);
-        const enabled = keyCandidates.some((k) => allowStore.has(k));
-        if (!enabled) {
-          logger.info('有効化リストに含まれていないため TODO 作成をスキップします', { notebook: notebook.name, notebookPath: notebook.path });
-          const totalPages = notebook.totalPages != null ? notebook.totalPages : (cacheStore.getEntry(notebook.path) ? cacheStore.getEntry(notebook.path).totalPages : 0);
-          cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
-          summary.updatedNotebooks += 1;
-          summary.notebookNames.push(notebook.name);
-          return;
-        }
-      }
     const entry = cacheStore.getEntry(notebook.path);
     logger.info('cache entry', {
       notebook: notebook.name,
@@ -233,6 +219,37 @@ class RemarkableSyncService {
     const totalPages = notebook.totalPages != null ? notebook.totalPages : (cachedTotalPages != null ? cachedTotalPages : baseline);
     logger.info('totalPages extracted', { notebook: notebook.name, totalPages });
 
+    // 有効化リストが空でない場合、リストに含まれているノートのみ TODO 作成する（排他動作）
+    const enableList = allowStore.listAll();
+    if (Array.isArray(enableList) && enableList.length > 0) {
+      const keyCandidates = [notebook.path, notebook.name, notebook.id].filter(Boolean).map(String);
+      const enabled = keyCandidates.some((k) => allowStore.has(k));
+      if (!enabled) {
+        if (totalPages > baseline) {
+          const warning = `ノート: ${notebook.name} - TODO 作成が有効化されていないため新規ページを保留しました`;
+          summary.warnings.push(warning);
+          logger.warn('有効化リスト外のノートで新規ページを検知したためキャッシュ更新を保留します', {
+            notebook: notebook.name,
+            notebookPath: notebook.path,
+            baseline,
+            totalPages,
+          });
+          return;
+        }
+
+        logger.info('有効化リスト外のノート（新規ページなし）のためキャッシュのみ更新します', {
+          notebook: notebook.name,
+          notebookPath: notebook.path,
+          baseline,
+          totalPages,
+        });
+        cacheStore.update(notebook.path, { baseline: totalPages, modified: notebook.modified, totalPages });
+        summary.updatedNotebooks += 1;
+        summary.notebookNames.push(notebook.name);
+        return;
+      }
+    }
+
     // baseline と比較して処理対象ページを決定する
     logger.info('更新を検知しました', {
       notebook: notebook.name,
@@ -244,12 +261,20 @@ class RemarkableSyncService {
 
     /** @type {number[]} 処理に失敗したページ番号 */
     const failedPages = [];
+    /** @type {number[]} TODO を作成できなかったページ番号 */
+    const todoCreationFailedPages = [];
 
     if (totalPages > baseline) {
       // 新しいページがある場合は baseline + 1 ～ total_pages を順に処理
       for (let pageNumber = baseline + 1; pageNumber <= totalPages; pageNumber += 1) {
-        const succeeded = await this.syncPage(notebook, pageNumber, summary);
-        if (!succeeded) failedPages.push(pageNumber);
+        const result = await this.syncPage(notebook, pageNumber, summary);
+        if (!result.succeeded) {
+          failedPages.push(pageNumber);
+          continue;
+        }
+        if (result.createdTodos <= 0) {
+          todoCreationFailedPages.push(pageNumber);
+        }
       }
     }
 
@@ -258,6 +283,15 @@ class RemarkableSyncService {
         notebook: notebook.name,
         failedPages: failedPages.join(','),
       });
+      return;
+    }
+
+    if (todoCreationFailedPages.length > 0) {
+      logger.warn('TODO を作成できなかったページがあるためキャッシュは更新しません', {
+        notebook: notebook.name,
+        failedPages: todoCreationFailedPages.join(','),
+      });
+      summary.warnings.push(`ノート: ${notebook.name} - TODO を作成できなかったページ: ${todoCreationFailedPages.join(', ')}`);
       return;
     }
 
@@ -282,7 +316,7 @@ class RemarkableSyncService {
    * @param {import('./types').Notebook} notebook
    * @param {number} pageNumber
    * @param {import('./types').SyncSummary} summary - 集計先（副作用で更新する）
-   * @returns {Promise<boolean>} 解析まで成功したか
+   * @returns {Promise<{ succeeded: boolean, createdTodos: number }>}
    */
   async syncPage(notebook, pageNumber, summary) {
     const startedAt = Date.now();
@@ -346,7 +380,7 @@ class RemarkableSyncService {
         durationMs,
       });
 
-      return true;
+      return { succeeded: true, createdTodos: registered.created };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       summary.errors.push(`ページ: ${notebook.name} p.${pageNumber} - ${message}`);
@@ -356,7 +390,7 @@ class RemarkableSyncService {
         error: message,
         durationMs: Date.now() - startedAt,
       });
-      return false;
+      return { succeeded: false, createdTodos: 0 };
     }
   }
 }
