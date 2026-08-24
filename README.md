@@ -253,6 +253,14 @@ reMarkable に書いた勉強ノートを OCR（Google Vision）＋ AI（Gemini�
 
 今日更新されたノートを解析し、結果を表示します。
 
+**SSH や cron から今すぐ同期：**
+
+```bash
+npm run remarkable:sync
+```
+
+Discord を経由せずに同じ reMarkable 同期処理を実行できます。
+
 **解析履歴を確認：**
 
 ```

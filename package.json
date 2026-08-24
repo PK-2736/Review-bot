@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "remarkable:sync": "node run-full-sync.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "pm2:start": "pm2 start ecosystem.config.js",
