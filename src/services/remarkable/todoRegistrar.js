@@ -274,4 +274,61 @@ async function registerTodos(params) {
   return { created, warnings };
 }
 
-module.exports = { registerTodos, buildDescription, processPendingTodoRetries };
+/**
+ * Gemini なしで最小限の TODO を登録する（クォータ超過時のフォールバック）。
+ *
+ * 作成される TODO の内容:
+ *   - content: "{notebookName} p.{page} 要復習"
+ *   - description: 作成日・ノート・ページのみ
+ *
+ * @param {Object} params
+ * @param {string} params.notebookName
+ * @param {string} params.notebookPath
+ * @param {number} params.page
+ * @returns {Promise<{ created: number, warnings: string[] }>}
+ */
+async function registerMinimalTodo(params) {
+  const today = new Date();
+  const createdDateStr = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  const content = `${params.notebookName} p.${params.page} 要復習`;
+  const description = `作成日: ${createdDateStr}\nノート: ${params.notebookName}\nページ: ${params.page}`;
+
+  const warnings = [];
+
+  try {
+    const result = await todoistService.createRemarkableTodo({ content, description }, params.notebookName);
+    // createRemarkableTodo は常に { tasks: Array, failedDetails: Array } を返す
+    const created = Array.isArray(result.tasks) ? result.tasks.length : 0;
+
+    if (Array.isArray(result.failedDetails) && result.failedDetails.length > 0) {
+      for (const failure of result.failedDetails) {
+        const message = failure.error instanceof Error ? failure.error.message : String(failure.error);
+        warnings.push(`最小 TODO の登録に失敗しました (${failure.dueDate}): ${message}`);
+      }
+    }
+
+    logger.info('最小 TODO を登録しました (Gemini クォータ超過フォールバック)', {
+      notebook: params.notebookName,
+      page: params.page,
+      created,
+    });
+
+    return { created, warnings };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('最小 TODO の登録に失敗しました', {
+      notebook: params.notebookName,
+      page: params.page,
+      error: message,
+    });
+    warnings.push(`最小 TODO の登録に失敗しました: ${message}`);
+    return { created: 0, warnings };
+  }
+}
+
+module.exports = { registerTodos, buildDescription, processPendingTodoRetries, registerMinimalTodo };

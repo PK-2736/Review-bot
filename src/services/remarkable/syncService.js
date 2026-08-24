@@ -10,6 +10,16 @@ const todoRegistrar = require('./todoRegistrar');
 const allowStore = require('./allowStore');
 
 /**
+ * Gemini のクォータ超過エラーかどうかを判定する。
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isGeminiQuotaError(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /quota.?exceeded|exceeded.*quota|resource.?exhausted/i.test(msg);
+}
+
+/**
  * reMarkable レビューの同期サービス。
  *
  * ここが唯一の同期実装であり、
@@ -135,9 +145,12 @@ class RemarkableSyncService {
     logger.info('ノート一覧を取得しました', { notebooks: notebooks.length });
 
     // ③ ノートごとに同期。1冊の失敗で全体を中断しない
+    /** @type {{ geminiQuotaExceeded: boolean }} */
+    const syncState = { geminiQuotaExceeded: false };
+
     for (const notebook of notebooks) {
       try {
-        await this.syncNotebook(notebook, summary);
+        await this.syncNotebook(notebook, summary, syncState);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         summary.errors.push(`ノート: ${notebook.name} - ${message}`);
@@ -170,9 +183,10 @@ class RemarkableSyncService {
    *
    * @param {import('./types').Notebook} notebook
    * @param {import('./types').SyncSummary} summary - 集計先（副作用で更新する）
+   * @param {{ geminiQuotaExceeded: boolean }} syncState - 同期ごとの共有状態
    * @returns {Promise<void>}
    */
-  async syncNotebook(notebook, summary) {
+  async syncNotebook(notebook, summary, syncState = { geminiQuotaExceeded: false }) {
     // PDF 判定: remarkable_browse が返す `type` フィールドが 'pdf' の場合は無条件で TODO を作成しない
     try {
       const isPdfType = notebook.type && String(notebook.type).toLowerCase() === 'pdf';
@@ -267,7 +281,7 @@ class RemarkableSyncService {
     if (totalPages > baseline) {
       // 新しいページがある場合は baseline + 1 ～ total_pages を順に処理
       for (let pageNumber = baseline + 1; pageNumber <= totalPages; pageNumber += 1) {
-        const result = await this.syncPage(notebook, pageNumber, summary);
+        const result = await this.syncPage(notebook, pageNumber, summary, syncState);
         if (!result.succeeded) {
           failedPages.push(pageNumber);
           continue;
@@ -312,25 +326,54 @@ class RemarkableSyncService {
    * 1ページを処理する（取得 → Gemini 解析 → Todoist 登録）。
    *
    * ページ単位の失敗は記録するだけで、残りのページ処理は継続する。
+   * Gemini のクォータ超過が発生した場合は最小 TODO へフォールバックし、
+   * 以降のページは Gemini をスキップして最小 TODO を作成する。
    *
    * @param {import('./types').Notebook} notebook
    * @param {number} pageNumber
    * @param {import('./types').SyncSummary} summary - 集計先（副作用で更新する）
+   * @param {{ geminiQuotaExceeded: boolean }} syncState - 同期ごとの共有状態
    * @returns {Promise<{ succeeded: boolean, createdTodos: number }>}
    */
-  async syncPage(notebook, pageNumber, summary) {
+  async syncPage(notebook, pageNumber, summary, syncState = { geminiQuotaExceeded: false }) {
     const startedAt = Date.now();
+
+    // クォータ超過フラグが立っている場合は Gemini をスキップして最小 TODO を作成する
+    if (syncState.geminiQuotaExceeded) {
+      logger.info('Gemini クォータ超過フラグが立っているため最小 TODO を作成します', {
+        notebook: notebook.name,
+        page: pageNumber,
+      });
+      return this.syncPageMinimal(notebook, pageNumber, summary, startedAt);
+    }
 
     try {
       // remarkable_page（include_ocr=false）でページ画像を取得
       const image = await pageFetcher.fetchPage(notebook.path, pageNumber, notebook.name);
 
       // Gemini Vision で OCR・要約・重要ポイント・TODO・タイトルを生成
-      const { analysis, durationMs: geminiDurationMs } = await pageAnalyzer.analyzePage({
-        notebookName: notebook.name,
-        page: pageNumber,
-        image,
-      });
+      let analysis;
+      let geminiDurationMs;
+      try {
+        const geminiResult = await pageAnalyzer.analyzePage({
+          notebookName: notebook.name,
+          page: pageNumber,
+          image,
+        });
+        analysis = geminiResult.analysis;
+        geminiDurationMs = geminiResult.durationMs;
+      } catch (geminiError) {
+        if (isGeminiQuotaError(geminiError)) {
+          syncState.geminiQuotaExceeded = true;
+          logger.warn('Gemini クォータ超過を検知しました。このページ以降は最小 TODO にフォールバックします', {
+            notebook: notebook.name,
+            page: pageNumber,
+            error: geminiError instanceof Error ? geminiError.message : String(geminiError),
+          });
+          return this.syncPageMinimal(notebook, pageNumber, summary, startedAt);
+        }
+        throw geminiError;
+      }
 
       // Todoist へ登録（失敗はページの失敗として扱う）
       // 呼び出し直前に todo 情報をログ出力して追跡しやすくする
@@ -385,6 +428,62 @@ class RemarkableSyncService {
       const message = error instanceof Error ? error.message : String(error);
       summary.errors.push(`ページ: ${notebook.name} p.${pageNumber} - ${message}`);
       logger.error('ページの処理に失敗しました（残りのページは継続します）', {
+        notebook: notebook.name,
+        page: pageNumber,
+        error: message,
+        durationMs: Date.now() - startedAt,
+      });
+      return { succeeded: false, createdTodos: 0 };
+    }
+  }
+
+  /**
+   * Gemini をスキップして最小限の TODO を作成する（クォータ超過フォールバック）。
+   *
+   * @param {import('./types').Notebook} notebook
+   * @param {number} pageNumber
+   * @param {import('./types').SyncSummary} summary - 集計先（副作用で更新する）
+   * @param {number} startedAt - Date.now() の開始時刻
+   * @returns {Promise<{ succeeded: boolean, createdTodos: number }>}
+   */
+  async syncPageMinimal(notebook, pageNumber, summary, startedAt) {
+    try {
+      const registered = await todoRegistrar.registerMinimalTodo({
+        notebookName: notebook.name,
+        notebookPath: notebook.path,
+        page: pageNumber,
+      });
+
+      if (registered.warnings && registered.warnings.length > 0) {
+        summary.warnings.push(...registered.warnings);
+      }
+
+      const durationMs = Date.now() - startedAt;
+
+      summary.processedPages += 1;
+      summary.createdTodos += registered.created;
+      summary.pages.push({
+        notebookPath: notebook.path,
+        notebookName: notebook.name,
+        page: pageNumber,
+        analysis: null,
+        createdTodos: registered.created,
+        durationMs,
+        geminiDurationMs: 0,
+      });
+
+      logger.info('最小 TODO でページを処理しました', {
+        notebook: notebook.name,
+        page: pageNumber,
+        createdTodos: registered.created,
+        durationMs,
+      });
+
+      return { succeeded: true, createdTodos: registered.created };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      summary.errors.push(`ページ: ${notebook.name} p.${pageNumber} - ${message}`);
+      logger.error('最小 TODO の作成に失敗しました（残りのページは継続します）', {
         notebook: notebook.name,
         page: pageNumber,
         error: message,
