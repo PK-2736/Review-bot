@@ -746,7 +746,7 @@ class TodoistService {
    * @param {number} olderThanDays - 何日以上前を削除対象にするか
    * @returns {Promise<{deleted: number, failed: number}>}
    */
-  async deleteOldReviewTasks(olderThanDays = 2) {
+  async deleteOldReviewTasks(olderThanDays = 3) {
     try {
       const tasks = await this.getAllTasks();
       const cutoff = new Date();
